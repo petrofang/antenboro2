@@ -84,7 +84,7 @@ export class UndergroundRenderer {
     // Build chamber rooms for each node
     for (const node of underground.nodes.values()) {
       if (!node.built) continue;
-      this._createChamberMesh(node);
+      this._createChamberMesh(node, underground);
     }
 
     console.log(`✓ Underground rebuilt: ${underground.nodes.size} nodes, ${underground.edges.size} edges`);
@@ -198,16 +198,32 @@ export class UndergroundRenderer {
   }
 
   /**
-   * Create a chamber room (spherical interior or half-sphere dome).
+   * Create a chamber room with openings where tunnels connect.
    */
-  _createChamberMesh(node) {
+  _createChamberMesh(node, underground) {
     const r = node.radius;
     const isEntrance = node.type === 'entrance';
 
+    // Compute tunnel directions for cutting holes in the sphere
+    const tunnelDirs = [];
+    const connected = underground.getConnected(node.id);
+    for (const other of connected) {
+      if (!other) continue;
+      const dir = new THREE.Vector3(
+        other.x - node.x,
+        other.y - node.y,
+        other.z - node.z
+      ).normalize();
+      // Use the edge width for hole sizing; default 0.5
+      const edge = underground.getEdge(node.id, other.id);
+      const tunnelWidth = edge ? edge.width : 0.5;
+      tunnelDirs.push({ dir, width: tunnelWidth });
+    }
+
     if (isEntrance) {
-      // Entrance: earthy half-dome walls (lower portion of sphere)
-      // The top is open — that's where the sky is visible
-      const domeGeo = new THREE.SphereGeometry(r, 16, 12, 0, Math.PI * 2, Math.PI * 0.35, Math.PI * 0.65);
+      // Entrance: earthy dome walls with sky opening at top + tunnel holes
+      const domeGeo = new THREE.SphereGeometry(r, 20, 14, 0, Math.PI * 2, Math.PI * 0.35, Math.PI * 0.65);
+      this._cutTunnelHoles(domeGeo, tunnelDirs, r);
       const chamber = new THREE.Mesh(domeGeo, this.chamberMaterial);
       chamber.position.set(node.x, node.y, node.z);
       chamber.receiveShadow = true;
@@ -235,8 +251,9 @@ export class UndergroundRenderer {
       this.scene.add(sunLight);
       this.lightObjects.push(sunLight);
     } else {
-      // Standard inverted sphere for chamber interior
-      const sphereGeo = new THREE.SphereGeometry(r, 16, 12);
+      // Standard inverted sphere with tunnel openings cut out
+      const sphereGeo = new THREE.SphereGeometry(r, 20, 14);
+      this._cutTunnelHoles(sphereGeo, tunnelDirs, r);
       const chamber = new THREE.Mesh(sphereGeo, this.chamberMaterial);
       chamber.position.set(node.x, node.y, node.z);
       chamber.receiveShadow = true;
@@ -287,6 +304,67 @@ export class UndergroundRenderer {
       this.scene.add(marker);
       this.chamberMeshes.push(marker);
     }
+  }
+
+  /**
+   * Remove triangles from a sphere geometry where tunnels connect.
+   * This creates natural openings in the chamber walls.
+   * @param {THREE.BufferGeometry} geo - sphere geometry (non-indexed or indexed)
+   * @param {Array<{dir: THREE.Vector3, width: number}>} tunnelDirs - tunnel directions + widths
+   * @param {number} radius - chamber radius
+   */
+  _cutTunnelHoles(geo, tunnelDirs, radius) {
+    if (tunnelDirs.length === 0) return;
+
+    const posAttr = geo.getAttribute('position');
+    const index = geo.getIndex();
+    if (!index) return; // need indexed geometry
+
+    const indices = Array.from(index.array);
+    const newIndices = [];
+
+    // For each triangle, check if its center faces toward any tunnel
+    const va = new THREE.Vector3();
+    const vb = new THREE.Vector3();
+    const vc = new THREE.Vector3();
+    const center = new THREE.Vector3();
+
+    for (let i = 0; i < indices.length; i += 3) {
+      const ia = indices[i], ib = indices[i + 1], ic = indices[i + 2];
+      va.fromBufferAttribute(posAttr, ia);
+      vb.fromBufferAttribute(posAttr, ib);
+      vc.fromBufferAttribute(posAttr, ic);
+
+      // Triangle center on the sphere surface
+      center.set(
+        (va.x + vb.x + vc.x) / 3,
+        (va.y + vb.y + vc.y) / 3,
+        (va.z + vb.z + vc.z) / 3
+      );
+
+      // Normalize to get direction from sphere center
+      const centerDir = center.clone().normalize();
+
+      // Check against each tunnel direction
+      let cut = false;
+      for (const td of tunnelDirs) {
+        // Angular threshold: tunnel width relative to sphere radius
+        // Wider tunnels = bigger holes
+        const holeAngle = Math.atan2(td.width * 1.8, radius);
+        const dot = centerDir.dot(td.dir);
+        const angle = Math.acos(Math.min(1, Math.max(-1, dot)));
+        if (angle < holeAngle) {
+          cut = true;
+          break;
+        }
+      }
+
+      if (!cut) {
+        newIndices.push(ia, ib, ic);
+      }
+    }
+
+    geo.setIndex(newIndices);
   }
 
   _getChamberLightColor(type) {
