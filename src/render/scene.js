@@ -23,7 +23,6 @@ export class SceneManager {
     this.renderer.setSize(window.innerWidth, window.innerHeight);
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-    this.renderer.shadowMap.mapSize = new THREE.Vector2(CONFIG.SHADOW_MAP_SIZE, CONFIG.SHADOW_MAP_SIZE);
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.0;
@@ -269,7 +268,7 @@ export class SceneManager {
     const worldZ = (y - CONFIG.WORLD_HEIGHT / 2) * CONFIG.CELL_SIZE;
     
     mesh.position.set(worldX, height + 0.2, worldZ);
-    mesh.rotation.z = angle; // Rotate around vertical axis (simplified)
+    mesh.rotation.y = -angle; // Rotate around vertical axis (Y is up)
   }
 
   /**

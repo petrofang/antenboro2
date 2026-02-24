@@ -1,108 +1,60 @@
 import * as THREE from 'three';
-console.log('✓ THREE imported');
-
 import CONFIG from './sim/config.js';
-console.log('✓ CONFIG imported');
-
 import { SimulationEngine } from './sim/index.js';
-console.log('✓ SimulationEngine imported');
-
 import { SceneManager } from './render/scene.js';
-console.log('✓ SceneManager imported');
-
 import { PlayerController } from './render/player.js';
-console.log('✓ PlayerController imported');
 
-// Immediate diagnostics
-console.log('🚀 main.js fully loaded');
+console.log('🚀 AntenbOro modules loaded');
 const statusEl = document.getElementById('status');
 function updateStatus(msg) {
-  console.log(msg);
   if (statusEl) statusEl.textContent = msg;
 }
-
-updateStatus('✓ All imports successful, creating game...');
 
 /**
  * Main game application.
  */
 class AntenbOro {
   constructor() {
-    console.log('🎮 Constructor started');
-    updateStatus('🎮 Constructor called...');
     try {
-      updateStatus('Creating simulation engine...');
-      console.log('Creating simulation engine...');
-      console.log('CONFIG:', CONFIG);
-      
-      // Simulation
-      console.log('About to create SimulationEngine');
+      updateStatus('Creating simulation...');
       this.simulation = new SimulationEngine();
-      console.log('✓✓✓ Simulation created!');
-      console.log('Simulation object:', this.simulation);
       
       // Rendering
       const canvas = document.getElementById('canvas');
-      if (!canvas) {
-        throw new Error('Canvas element not found in DOM');
-      }
-      updateStatus('Creating scene manager...');
+      if (!canvas) throw new Error('Canvas element not found');
+      updateStatus('Creating scene...');
       this.sceneManager = new SceneManager(canvas);
-      updateStatus('✓ Scene manager created, initializing player...');
-      console.log('✓ Scene manager created');
       
       // Player
-      updateStatus('Creating player controller...');
+      updateStatus('Creating player...');
       this.playerController = new PlayerController(
         this.simulation.playerColony,
         this.simulation,
         this.sceneManager
       );
-      updateStatus('✓ Player created, setting up UI...');
-      console.log('✓ Player controller created');
       
       // UI
-      updateStatus('Creating UI manager...');
       this.uiManager = new UIManager(this.simulation, this.playerController);
-      updateStatus('✓ UI created, initializing world...');
-      console.log('✓ UI manager created');
       
       // Fixed-timestep accumulator
       this.accumulator = 0;
-      this.deltaTime = 1 / CONFIG.TICKS_PER_SECOND; // Fixed timestep
+      this.deltaTime = 1 / CONFIG.TICKS_PER_SECOND;
       this.lastFrameTime = performance.now();
       
       // Initialize world
-      updateStatus('Creating terrain...');
+      updateStatus('Building world...');
       this.sceneManager.createTerrain();
-      updateStatus('✓ Terrain created, creating test geometry...');
-      console.log('✓ Terrain created');
-      
-      // Create a test cube to verify rendering works
-      updateStatus('Creating test cube...');
       this.sceneManager.createTestCube();
-      updateStatus('✓ Test cube created, syncing ants...');
-      console.log('✓ Test cube created (visible orange cube)');
-      
-      // Create ant meshes for all ants
-      updateStatus('Creating ant meshes...');
       this._syncAntMeshes();
-      updateStatus('✓ Ant meshes synced - ' + this.sceneManager.antMeshes.size + ' ants created, starting game loop...');
-      console.log('✓ Ant meshes synced - ' + this.sceneManager.antMeshes.size + ' ants created');
       
       // Start game loop
-      updateStatus('Starting game loop...');
       this._setupGameLoop();
-      updateStatus('✓ Game loop started - READY TO PLAY!');
-      console.log('✓ Game loop started');
-      
-      updateStatus('🎮 GAME RUNNING! Use WASD to move, TAB for overhead view');
-      console.log('🎮 Game initialized successfully!');
+      console.log('🎮 Game initialized — ' + this.sceneManager.antMeshes.size + ' ants');
     } catch (err) {
-      console.error('❌ CONSTRUCTOR ERROR:', err);
-      console.error('Stack:', err.stack);
-      updateStatus('❌ ERROR IN CONSTRUCTOR: ' + err.message);
+      console.error('❌ INIT ERROR:', err.message, err.stack);
+      updateStatus('❌ ERROR: ' + err.message);
       throw err;
+    }
     }
   }
 
@@ -293,23 +245,17 @@ class UIManager {
 
 // Initialize when DOM is ready
 document.addEventListener('DOMContentLoaded', () => {
-  console.log('📄 DOM loaded, starting game initialization...');
-  const statusEl = document.getElementById('status');
   try {
-    if (statusEl) statusEl.textContent = '📄 DOM loaded, initializing game...';
     window.game = new AntenbOro();
-    // Hide loading screen after 3 seconds
+    // Hide loading screen
     setTimeout(() => {
       const loading = document.getElementById('loading');
       if (loading) loading.style.display = 'none';
-    }, 3000);
+    }, 1500);
   } catch (err) {
-    console.error('Fatal error:', err);
-    if (statusEl) statusEl.innerHTML = `<span style="color: #ff0000;">❌ ERROR</span><br/>${err.message}`;
-    const hud = document.getElementById('hud');
-    if (hud) {
-      hud.innerHTML = `<div style="color: red;"><h1>ERROR</h1><p>${err.message}</p><pre>${err.stack}</pre></div>`;
-    }
+    console.error('Fatal:', err);
+    const s = document.getElementById('status');
+    if (s) s.innerHTML = `<span style="color:#f00">❌ ${err.message}</span>`;
   }
 });
 

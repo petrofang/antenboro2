@@ -16,7 +16,9 @@ export class Ant {
     
     // Life & health
     this.age = 0;
-    this.health = type === 'WORKER' ? CONFIG.WORKER_HEALTH : CONFIG.SOLDIER_HEALTH;
+    this.health = type === 'QUEEN' ? CONFIG.QUEEN_HEALTH
+      : type === 'SOLDIER' ? CONFIG.SOLDIER_HEALTH
+      : CONFIG.WORKER_HEALTH;
     this.maxHealth = this.health;
     this.isDead = false;
     
@@ -48,6 +50,12 @@ export class Ant {
    */
   update(world, colony, otherColony) {
     if (this.isDead) return;
+
+    // Health-based death
+    if (this.health <= 0) {
+      this.isDead = true;
+      return;
+    }
 
     this.age++;
     if (this.age > CONFIG.ANT_LIFESPAN_TICKS) {
