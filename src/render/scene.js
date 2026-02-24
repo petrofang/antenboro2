@@ -102,14 +102,24 @@ export class SceneManager {
    */
   createTerrain() {
     const size = CONFIG.WORLD_SIZE_3D;
-    const segments = 64;
+    const segments = 128;
     const geometry = new THREE.PlaneGeometry(size, size, segments, segments);
     
-    // No height displacement — flat terrain avoids raycasting issues
-    // and keeps ants, nests, and food firmly on the ground
+    // Vertex displacement for rolling hills
+    const positionAttribute = geometry.getAttribute('position');
+    const positions = positionAttribute.array;
+    for (let i = 0; i < positions.length; i += 3) {
+      const x = positions[i];       // local X → world X
+      const y = positions[i + 1];   // local Y → world -Z
+      // Gentle rolling terrain
+      const height = Math.sin(x * 0.08) * 0.5
+                   + Math.cos(y * 0.08) * 0.5
+                   + Math.sin(x * 0.03 + y * 0.04) * 0.3;
+      positions[i + 2] = height;
+    }
+    positionAttribute.needsUpdate = true;
     geometry.computeVertexNormals();
     
-    // Material with PBR
     const material = new THREE.MeshStandardMaterial({
       color: 0x3d6b2a,
       roughness: 0.8,
@@ -119,23 +129,26 @@ export class SceneManager {
     
     const terrain = new THREE.Mesh(geometry, material);
     terrain.receiveShadow = true;
-    // Rotate to be horizontal (XZ plane)
     terrain.rotation.x = -Math.PI / 2;
     terrain.position.y = 0;
     
     this.scene.add(terrain);
     this.terrain = terrain;
     
-    console.log('✓ Terrain created: size=' + size + 'x' + size);
+    console.log('✓ Terrain created: size=' + size + 'x' + size + ', segments=' + segments);
     return terrain;
   }
 
   /**
-   * Sample terrain height at a world XZ position.
-   * Flat terrain — always returns 0.
+   * Analytical terrain height at a world XZ position.
+   * Uses the same formula as vertex displacement — no raycaster needed.
+   * Local X = world X, local Y = -world Z (due to rotation.x = -PI/2).
    */
   getTerrainHeight(worldX, worldZ) {
-    return 0;
+    const localY = -worldZ; // local Y maps to world -Z
+    return Math.sin(worldX * 0.08) * 0.5
+         + Math.cos(localY * 0.08) * 0.5
+         + Math.sin(worldX * 0.03 + localY * 0.04) * 0.3;
   }
   
   /**
@@ -443,7 +456,7 @@ export class SceneManager {
     const worldX = (x - CONFIG.WORLD_WIDTH / 2) * CONFIG.CELL_SIZE;
     const worldZ = (y - CONFIG.WORLD_HEIGHT / 2) * CONFIG.CELL_SIZE;
     const terrainY = this.getTerrainHeight(worldX, worldZ);
-    mesh.position.set(worldX, terrainY + 0.05, worldZ);
+    mesh.position.set(worldX, terrainY + 0.15, worldZ);
     mesh.rotation.y = Math.PI / 2 - angle;
     
     // Queen pulsating abdomen animation
