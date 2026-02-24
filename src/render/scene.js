@@ -318,19 +318,22 @@ export class SceneManager {
     
     // Determine color and size
     const isEnemy = colonyId === 1;
-    const bodyColor = isEnemy ? 0xb82010 : 0x1a1008;
     const isSoldier = type === 'SOLDIER';
-    const scale = isSoldier ? 1.3 : 1.0;
+    const isQueen = type === 'QUEEN';
+    const scale = isQueen ? 1.6 : (isSoldier ? 1.3 : 1.0);
     
     // Body segments (3 ellipsoids: head, thorax, gaster)
     const headGeometry = new THREE.SphereGeometry(0.15 * scale, 8, 8);
     const thoraxGeometry = new THREE.SphereGeometry(0.2 * scale, 8, 8);
     const gasterGeometry = new THREE.SphereGeometry(0.25 * scale, 8, 8);
     
+    // Very distinct colors: player = dark brown/black, enemy = vivid bright red
     const bodyMaterial = new THREE.MeshStandardMaterial({
-      color: bodyColor,
-      roughness: 0.4,
-      metalness: 0.1,
+      color: isEnemy ? 0xff2200 : 0x1a1008,
+      roughness: isEnemy ? 0.3 : 0.5,
+      metalness: isEnemy ? 0.15 : 0.05,
+      emissive: isEnemy ? 0x660000 : 0x000000,
+      emissiveIntensity: isEnemy ? 0.4 : 0,
     });
     
     const head = new THREE.Mesh(headGeometry, bodyMaterial);

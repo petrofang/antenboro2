@@ -21,15 +21,16 @@ const CONFIG = {
   NEST_RADIUS: 5,              // Nest entrance radius in cells
   
   // === ANT COUNTS ===
-  INITIAL_WORKERS: 30,
-  INITIAL_SOLDIERS: 10,
-  MAX_ANTS_PER_COLONY: 200,
+  INITIAL_WORKERS: 20,
+  INITIAL_SOLDIERS: 5,
+  MAX_ANTS_PER_COLONY: 150,
   
   // === FOOD & RESOURCES ===
-  FOOD_CLUSTERS: 8,            // Number of food patches on map
-  FOOD_PER_CLUSTER: 30,        // Food units per patch
+  FOOD_CLUSTERS: 12,            // Number of food patches on map
+  FOOD_PER_CLUSTER: 80,         // Food units per patch
   FOOD_CARRY_CAPACITY: 1,      // How much one ant can carry
-  FOOD_DEPOT_CAPACITY: 500,    // Max food colony can store
+  FOOD_DEPOT_CAPACITY: 1000,   // Max food colony can store
+  FOOD_RESPAWN_CHANCE: 0.0005, // Chance per tick of a depleted patch respawning
   
   // === ANT BEHAVIOR: MOVEMENT ===
   ANT_SPEED: 0.3,              // Grid cells per tick (at 1× speed)
@@ -37,12 +38,12 @@ const CONFIG = {
   ANT_WANDER_ANGLE_CHANGE: 0.3, // Radians per tick while wandering
   
   // === ANT BEHAVIOR: COMBAT ===
-  SOLDIER_DAMAGE: 3,
+  SOLDIER_DAMAGE: 2,
   WORKER_DAMAGE: 1,
-  WORKER_HEALTH: 5,
-  SOLDIER_HEALTH: 10,
-  QUEEN_HEALTH: 50,
-  BITE_COOLDOWN: 8,            // Ticks between bites
+  WORKER_HEALTH: 8,
+  SOLDIER_HEALTH: 15,
+  QUEEN_HEALTH: 100,
+  BITE_COOLDOWN: 10,           // Ticks between bites
   BITE_RANGE: 1.5,             // Grid cells
   
   // === ANT BEHAVIOR: FORAGING ===
@@ -54,12 +55,12 @@ const CONFIG = {
   PHEROMONE_SENSOR_SPREAD: 1,  // Angle spread (radians) of sensors
   
   // === ANT BEHAVIOR: LIFE CYCLE ===
-  EGG_INCUBATION_TICKS: 150,   // Ticks for egg → larva
-  LARVA_GROWTH_TICKS: 200,     // Ticks for larva → pupa
-  PUPA_GROWTH_TICKS: 150,      // Ticks for pupa → adult
-  QUEEN_EGG_LAYING_INTERVAL: 30, // Ticks between egg-laying (if food > threshold)
-  QUEEN_MIN_FOOD_TO_LAY: 50,   // Colony food threshold to lay eggs
-  ANT_LIFESPAN_TICKS: 3000,    // Natural death age (~1.7 min at 30 ticks/sec)
+  EGG_INCUBATION_TICKS: 300,   // Ticks for egg → larva
+  LARVA_GROWTH_TICKS: 400,     // Ticks for larva → pupa
+  PUPA_GROWTH_TICKS: 300,      // Ticks for pupa → adult
+  QUEEN_EGG_LAYING_INTERVAL: 90, // Ticks between egg-laying (slower)
+  QUEEN_MIN_FOOD_TO_LAY: 80,   // Colony food threshold to lay eggs
+  ANT_LIFESPAN_TICKS: 12000,   // Natural death age (~6.7 min at 30 ticks/sec)
   
   // === PHEROMONE PHYSICS ===
   PHEROMONE_DECAY_RATE: 0.95,  // Multiplier per tick (5% decay)

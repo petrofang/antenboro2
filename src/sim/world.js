@@ -60,10 +60,17 @@ export class World {
   }
 
   /**
-   * Update world state (pheromone decay, etc.).
+   * Update world state (pheromone decay, food respawning, etc.).
    */
   update() {
     this.pheromones.update();
+    
+    // Respawn depleted food patches over time
+    for (const food of this.foodPatches) {
+      if (food.amount <= 0 && Math.random() < CONFIG.FOOD_RESPAWN_CHANCE) {
+        food.amount = Math.floor(CONFIG.FOOD_PER_CLUSTER * (0.3 + Math.random() * 0.7));
+      }
+    }
   }
 }
 

@@ -63,10 +63,6 @@ export class Ant {
     }
 
     this.age++;
-    if (this.age > CONFIG.ANT_LIFESPAN_TICKS) {
-      this.isDead = true;
-      return;
-    }
 
     // Decrement cooldowns
     if (this.biteCooldown > 0) this.biteCooldown--;
