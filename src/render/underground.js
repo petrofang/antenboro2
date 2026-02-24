@@ -53,21 +53,13 @@ export class UndergroundRenderer {
   }
 
   _setupLighting() {
-    // Gentle ambient — sun permeates about an inch into soil
-    const ambient = new THREE.AmbientLight(0x554433, 0.35);
+    // Moderate ambient — light permeates slightly through soil
+    const ambient = new THREE.AmbientLight(0x665544, 0.5);
     this.scene.add(ambient);
 
-    // Entrance daylight — strong, floods the first stretch of tunnel
-    this.entranceLight = new THREE.PointLight(0xddeeff, 2.0, 14, 2);
-    this.entranceLight.position.set(0, 1.0, 0);
-    this.scene.add(this.entranceLight);
-
-    // Downward spot from the sky-hole, casting a pool of light on the entrance floor
-    this.entranceSpot = new THREE.SpotLight(0xffffff, 1.8, 8, Math.PI / 4, 0.5, 2);
-    this.entranceSpot.position.set(0, 2.5, 0);
-    this.entranceSpot.target.position.set(0, -1, 0);
-    this.scene.add(this.entranceSpot);
-    this.scene.add(this.entranceSpot.target);
+    // Hemisphere light — warm ground below, cool sky tint from entrance above
+    const hemi = new THREE.HemisphereLight(0x8899aa, 0x554433, 0.3);
+    this.scene.add(hemi);
   }
 
   /**
@@ -117,6 +109,17 @@ export class UndergroundRenderer {
     const tubeGeo = new THREE.TubeGeometry(path, 16, width, 8, false);
     const tube = new THREE.Mesh(tubeGeo, this.tunnelMaterial);
     tube.receiveShadow = true;
+
+    // Point lights along the tunnel so corridors are navigable
+    const numLights = Math.max(1, Math.floor(path.getLength() / 2.5));
+    for (let i = 0; i <= numLights; i++) {
+      const t = i / numLights;
+      const p = path.getPointAt(t);
+      const tLight = new THREE.PointLight(0xaa8866, 0.4, 3.5, 2);
+      tLight.position.set(p.x, p.y + width * 0.3, p.z);
+      this.scene.add(tLight);
+      this.lightObjects.push(tLight);
+    }
 
     // Floor strip inside tunnel (flat walkable surface)
     const floorPoints = [];
@@ -183,37 +186,36 @@ export class UndergroundRenderer {
     const r = node.radius;
     const isEntrance = node.type === 'entrance';
 
-    // Entrance gets a sky-blue interior; other chambers get earthy brown
     if (isEntrance) {
-      // Sky portal — the sphere interior looks like open sky above
-      const sphereGeo = new THREE.SphereGeometry(r, 16, 12);
-      const skyMat = new THREE.MeshStandardMaterial({
-        color: 0x88bbee,
-        emissive: 0x6699cc,
-        emissiveIntensity: 0.6,
-        roughness: 0.3,
-        metalness: 0.0,
-        side: THREE.BackSide,
-      });
-      const chamber = new THREE.Mesh(sphereGeo, skyMat);
+      // Entrance: earthy half-dome walls (lower portion of sphere)
+      // The top is open — that's where the sky is visible
+      const domeGeo = new THREE.SphereGeometry(r, 16, 12, 0, Math.PI * 2, Math.PI * 0.35, Math.PI * 0.65);
+      const chamber = new THREE.Mesh(domeGeo, this.chamberMaterial);
       chamber.position.set(node.x, node.y, node.z);
+      chamber.receiveShadow = true;
       this.scene.add(chamber);
       this.chamberMeshes.push(chamber);
 
-      // Bright disc at top of entrance — the "hole to the sky"
-      const holeGeo = new THREE.CircleGeometry(r * 0.6, 16);
+      // Sky disc at the top — the open hole to the outside
+      const holeGeo = new THREE.CircleGeometry(r * 0.55, 16);
       const holeMat = new THREE.MeshStandardMaterial({
-        color: 0xffffff,
-        emissive: 0xeef4ff,
-        emissiveIntensity: 1.2,
+        color: 0x99ccee,
+        emissive: 0x88bbdd,
+        emissiveIntensity: 0.7,
         roughness: 0.0,
         side: THREE.DoubleSide,
       });
       const hole = new THREE.Mesh(holeGeo, holeMat);
-      hole.rotation.x = Math.PI / 2; // face downward
-      hole.position.set(node.x, node.y + r * 0.85, node.z);
+      hole.rotation.x = Math.PI / 2;
+      hole.position.set(node.x, node.y + r * 0.7, node.z);
       this.scene.add(hole);
       this.chamberMeshes.push(hole);
+
+      // Strong daylight pouring down from the hole
+      const sunLight = new THREE.PointLight(0xddeeff, 1.8, r * 6, 2);
+      sunLight.position.set(node.x, node.y + r * 0.6, node.z);
+      this.scene.add(sunLight);
+      this.lightObjects.push(sunLight);
     } else {
       // Standard inverted sphere for chamber interior
       const sphereGeo = new THREE.SphereGeometry(r, 16, 12);
@@ -228,7 +230,7 @@ export class UndergroundRenderer {
     const floorGeo = new THREE.CircleGeometry(r * 0.85, 16);
     const floorMat = isEntrance
       ? new THREE.MeshStandardMaterial({
-          color: 0x8a7a60,  // sun-bleached dirt near the entrance
+          color: 0x8a7a60,
           roughness: 0.8,
           metalness: 0.0,
         })
@@ -240,16 +242,18 @@ export class UndergroundRenderer {
     this.scene.add(floor);
     this.chamberMeshes.push(floor);
 
-    // Point light in chamber (warm glow, or strong daylight for entrance)
-    const light = new THREE.PointLight(
-      this._getChamberLightColor(node.type),
-      isEntrance ? 1.5 : 0.5,
-      isEntrance ? r * 5 : r * 3,
-      2
-    );
-    light.position.set(node.x, node.y + r * 0.2, node.z);
-    this.scene.add(light);
-    this.lightObjects.push(light);
+    // Point light in chamber (warm glow) — entrance uses its own sunLight above
+    if (!isEntrance) {
+      const light = new THREE.PointLight(
+        this._getChamberLightColor(node.type),
+        0.6,
+        r * 4,
+        2
+      );
+      light.position.set(node.x, node.y + r * 0.2, node.z);
+      this.scene.add(light);
+      this.lightObjects.push(light);
+    }
 
     // Type label (as a small glowing marker on the floor)
     if (node.type !== 'entrance' && node.type !== 'tunnel_junction') {

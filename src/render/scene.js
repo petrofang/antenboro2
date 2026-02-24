@@ -299,37 +299,73 @@ export class SceneManager {
   _createNestMesh(color, emissive) {
     const group = new THREE.Group();
     
-    // Main mound — visible landmark, proportional to ant scale
-    const moundGeo = new THREE.SphereGeometry(3, 16, 12, 0, Math.PI * 2, 0, Math.PI / 2);
+    // Ant hill mound — cone shape rising from the ground
+    const moundGeo = new THREE.ConeGeometry(3, 2.2, 16, 4);
     const moundMat = new THREE.MeshStandardMaterial({
-      color: color,
-      roughness: 0.9,
+      color: 0x8B6914,       // sandy-brown dirt
+      roughness: 0.95,
       metalness: 0.0,
-      emissive: emissive,
-      emissiveIntensity: 0.4,
+      emissive: 0x2a1a05,
+      emissiveIntensity: 0.15,
     });
     const mound = new THREE.Mesh(moundGeo, moundMat);
+    mound.position.y = 1.1;   // half-height so base sits on ground
     mound.castShadow = true;
     mound.receiveShadow = true;
     group.add(mound);
+
+    // Wider base skirt — dirt apron around the mound
+    const baseGeo = new THREE.CylinderGeometry(3.5, 4.5, 0.3, 16);
+    const baseMat = new THREE.MeshStandardMaterial({
+      color: 0x7a5c1a,
+      roughness: 1.0,
+      metalness: 0.0,
+    });
+    const base = new THREE.Mesh(baseGeo, baseMat);
+    base.position.y = 0.15;
+    base.castShadow = true;
+    base.receiveShadow = true;
+    group.add(base);
     
-    // Entrance hole (dark disc)
-    const holeGeo = new THREE.CircleGeometry(0.5, 12);
-    const holeMat = new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 1.0 });
+    // Dark entrance hole at the top of the mound
+    const holeGeo = new THREE.CircleGeometry(0.4, 12);
+    const holeMat = new THREE.MeshStandardMaterial({
+      color: 0x0a0804,
+      roughness: 1.0,
+      emissive: 0x000000,
+    });
     const hole = new THREE.Mesh(holeGeo, holeMat);
     hole.rotation.x = -Math.PI / 2;
-    hole.position.set(0.8, 0.05, 0.8);
+    hole.position.set(0, 2.15, 0); // on top of the mound
     group.add(hole);
+
+    // Colony color ring around base — indicates team ownership
+    const ringGeo = new THREE.TorusGeometry(3.8, 0.12, 6, 24);
+    const ringMat = new THREE.MeshStandardMaterial({
+      color: color,
+      emissive: emissive,
+      emissiveIntensity: 0.5,
+      roughness: 0.6,
+    });
+    const ring = new THREE.Mesh(ringGeo, ringMat);
+    ring.rotation.x = -Math.PI / 2;
+    ring.position.y = 0.2;
+    group.add(ring);
     
-    // Small surrounding dirt piles
-    const dirtGeo = new THREE.SphereGeometry(0.6, 8, 6, 0, Math.PI * 2, 0, Math.PI / 2);
-    for (let i = 0; i < 4; i++) {
-      const dirt = new THREE.Mesh(dirtGeo, moundMat);
-      const a = (i / 4) * Math.PI * 2 + Math.random() * 0.5;
-      dirt.position.set(Math.cos(a) * 4, 0, Math.sin(a) * 4);
-      dirt.scale.setScalar(0.4 + Math.random() * 0.5);
-      dirt.castShadow = true;
-      group.add(dirt);
+    // Scattered dirt crumbs around the base
+    const crumbGeo = new THREE.SphereGeometry(0.25, 6, 4);
+    const crumbMat = new THREE.MeshStandardMaterial({
+      color: 0x8B6914,
+      roughness: 1.0,
+    });
+    for (let i = 0; i < 8; i++) {
+      const crumb = new THREE.Mesh(crumbGeo, crumbMat);
+      const a = (i / 8) * Math.PI * 2 + Math.random() * 0.4;
+      const dist = 4.2 + Math.random() * 1.5;
+      crumb.position.set(Math.cos(a) * dist, 0.1, Math.sin(a) * dist);
+      crumb.scale.setScalar(0.3 + Math.random() * 0.6);
+      crumb.castShadow = true;
+      group.add(crumb);
     }
     
     return group;
