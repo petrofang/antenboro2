@@ -28,9 +28,9 @@ export class SceneManager {
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.0;
     
-    // Camera position
-    this.camera.position.set(0, 5, 10);
-    this.camera.lookAt(0, 0, 0);
+    // Camera position - start above and behind terrain
+    this.camera.position.set(0, 15, 25);
+    this.camera.lookAt(0, 5, 0);
     
     // Fog
     this.scene.fog = new THREE.Fog(CONFIG.FOG_COLOR, CONFIG.FOG_NEAR, CONFIG.FOG_FAR);
@@ -55,28 +55,30 @@ export class SceneManager {
   }
 
   _setupLights() {
-    // Ambient light
-    const ambient = new THREE.AmbientLight(0xffffff, 0.6);
+    // Ambient light - brighten it to ensure visibility
+    const ambient = new THREE.AmbientLight(0xffffff, 0.8);
     this.scene.add(ambient);
     
-    // Directional light (sun)
-    const sun = new THREE.DirectionalLight(0xffffff, 0.8);
-    sun.position.set(30, 40, 30);
+    // Directional light (sun) - positioned clearly above
+    const sun = new THREE.DirectionalLight(0xffffff, 1.0);
+    sun.position.set(50, 50, 50);
     sun.target.position.set(0, 0, 0);
     sun.castShadow = true;
     sun.shadow.mapSize.set(CONFIG.SHADOW_MAP_SIZE, CONFIG.SHADOW_MAP_SIZE);
-    sun.shadow.camera.left = -CONFIG.WORLD_SIZE_3D;
-    sun.shadow.camera.right = CONFIG.WORLD_SIZE_3D;
-    sun.shadow.camera.top = CONFIG.WORLD_SIZE_3D;
-    sun.shadow.camera.bottom = -CONFIG.WORLD_SIZE_3D;
-    sun.shadow.camera.near = 1;
-    sun.shadow.camera.far = 200;
+    sun.shadow.camera.left = -CONFIG.WORLD_SIZE_3D * 1.5;
+    sun.shadow.camera.right = CONFIG.WORLD_SIZE_3D * 1.5;
+    sun.shadow.camera.top = CONFIG.WORLD_SIZE_3D * 1.5;
+    sun.shadow.camera.bottom = -CONFIG.WORLD_SIZE_3D * 1.5;
+    sun.shadow.camera.near = 0.5;
+    sun.shadow.camera.far = 300;
     this.scene.add(sun);
     this.scene.add(sun.target);
     
     // Hemisphere light for ambient color
-    const hemiLight = new THREE.HemisphereLight(0x87ceeb, 0x4a7c59, 0.3);
+    const hemiLight = new THREE.HemisphereLight(0x87ceeb, 0x4a7c59, 0.5);
     this.scene.add(hemiLight);
+    
+    console.log('✓ Lights set up: ambient + directional + hemisphere');
   }
 
   _onWindowResize() {
@@ -113,7 +115,7 @@ export class SceneManager {
     
     // Material with PBR
     const material = new THREE.MeshStandardMaterial({
-      color: 0x5a8c3a,
+      color: 0x3d6b2a,
       roughness: 0.8,
       metalness: 0.0,
       side: THREE.DoubleSide,
@@ -121,12 +123,33 @@ export class SceneManager {
     
     const terrain = new THREE.Mesh(geometry, material);
     terrain.receiveShadow = true;
+    // Rotate to be horizontal (XZ plane)
     terrain.rotation.x = -Math.PI / 2;
     terrain.position.y = 0;
     
     this.scene.add(terrain);
     this.terrain = terrain;
+    console.log('✓ Terrain created: size=' + size + 'x' + size + ', segments=' + segments);
     return terrain;
+  }
+  
+  /**
+   * Create a debug test cube to verify rendering works.
+   */
+  createTestCube() {
+    const geometry = new THREE.BoxGeometry(2, 2, 2);
+    const material = new THREE.MeshStandardMaterial({
+      color: 0xff6600,
+      roughness: 0.5,
+      metalness: 0.1,
+    });
+    const cube = new THREE.Mesh(geometry, material);
+    cube.position.set(0, 3, 0);
+    cube.castShadow = true;
+    cube.receiveShadow = true;
+    this.scene.add(cube);
+    console.log('✓ Test cube created at (0, 3, 0)');
+    return cube;
   }
 
   /**

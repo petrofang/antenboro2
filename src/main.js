@@ -45,9 +45,13 @@ class AntenbOro {
       this.sceneManager.createTerrain();
       console.log('✓ Terrain created');
       
+      // Create a test cube to verify rendering works
+      this.sceneManager.createTestCube();
+      console.log('✓ Test cube created (visible orange cube)');
+      
       // Create ant meshes for all ants
       this._syncAntMeshes();
-      console.log('✓ Ant meshes synced');
+      console.log('✓ Ant meshes synced - ' + this.sceneManager.antMeshes.size + ' ants created');
       
       // Start game loop
       this._setupGameLoop();
