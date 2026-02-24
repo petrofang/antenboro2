@@ -47,7 +47,12 @@ class AntenbOro {
       this.sceneManager.createNestMeshes();
       this.sceneManager.createFoodMeshes(this.simulation.world.foodPatches);
       this.sceneManager.snapWorldObjectsToTerrain();
+      this.sceneManager.setupBloom();
+      this.sceneManager.createPheromoneLayer();
       this._syncAntMeshes();
+
+      // Track previous hitFlash state for particle triggers
+      this._prevHitFlash = new Map();
       
       // Start game loop
       this._setupGameLoop();
@@ -96,6 +101,18 @@ class AntenbOro {
       // Sync all ant meshes to simulation state
       this._updateAntMeshes();
       
+      // Update death animations
+      this.sceneManager.updateDyingAnts();
+
+      // Update particles
+      const realDt = deltaMs / 1000;
+      this.sceneManager.updateParticles(realDt);
+
+      // Update 3D pheromone trails
+      const playerGrid = this.simulation.world.pheromones.getHeatmap(0);
+      const enemyGrid = this.simulation.world.pheromones.getHeatmap(1);
+      this.sceneManager.updatePheromoneLayer(playerGrid, enemyGrid);
+      
       // Update food visuals
       this.sceneManager.updateFoodMeshes(this.simulation.world.foodPatches);
       
@@ -124,15 +141,34 @@ class AntenbOro {
     for (const ant of allAnts) {
       const meshKey = `${ant.colonyId}_${ant.id}`;
       if (!ant.isDead) {
-        this.sceneManager.updateAntMesh(meshKey, ant.x, ant.y, ant.angle, 0);
+        const isMoving = ant.state !== 'GUARDING' && !ant.isPlayerControlled
+          ? true
+          : (ant.isPlayerControlled ? true : false);
+        this.sceneManager.updateAntMesh(
+          meshKey, ant.x, ant.y, ant.angle,
+          ant.carryingFood, ant.hitFlash, isMoving
+        );
         
         // Ensure mesh exists
         if (!this.sceneManager.antMeshes.has(meshKey)) {
           this.sceneManager.createAntMesh(meshKey, ant.type, ant.colonyId);
         }
+
+        // Spawn bite-spark particles on fresh hit
+        const prevFlash = this._prevHitFlash.get(meshKey) || 0;
+        if (ant.hitFlash > 0 && prevFlash === 0) {
+          const wx = (ant.x - CONFIG.WORLD_WIDTH / 2) * CONFIG.CELL_SIZE;
+          const wz = (ant.y - CONFIG.WORLD_HEIGHT / 2) * CONFIG.CELL_SIZE;
+          const wy = this.sceneManager.getTerrainHeight(wx, wz) + 0.2;
+          this.sceneManager.spawnParticles(wx, wy, wz, 6, {r:1, g:0.6, b:0.1}, 0.15, 0.5);
+        }
+        this._prevHitFlash.set(meshKey, ant.hitFlash);
       } else {
-        // Remove dead ant meshes
-        this.sceneManager.removeAntMesh(meshKey);
+        // Start death animation instead of instant removal
+        if (this.sceneManager.antMeshes.has(meshKey) && !this.sceneManager.dyingAnts.has(meshKey)) {
+          this.sceneManager.startDeathAnimation(meshKey);
+          this._prevHitFlash.delete(meshKey);
+        }
       }
     }
   }
