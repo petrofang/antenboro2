@@ -48,6 +48,10 @@ export class Ant {
     // Alarm pheromone channel = colonyId + 2 (channels 2 & 3)
     this.alarmChannel = colonyId + 2;
     
+    // Queen wandering
+    this.queenWanderTimer = 0;
+    this.isLayingEgg = 0;        // >0 = laying animation countdown ticks
+
     // Stats
     this.foodDeposited = 0;
     this.entsKilled = 0;
@@ -71,8 +75,12 @@ export class Ant {
     // Skip AI for player-controlled ant
     if (this.isPlayerControlled) return;
 
-    // Queen is stationary
-    if (this.type === 'QUEEN') return;
+    // Queen: gentle wandering inside nest
+    if (this.type === 'QUEEN') {
+      if (this.isLayingEgg > 0) this.isLayingEgg--;
+      this._queenWander();
+      return;
+    }
 
     // --- Always check for nearby enemies first (highest priority) ---
     const enemy = this._findNearbyEnemy(otherColony);
@@ -234,6 +242,40 @@ export class Ant {
     if (distToNest > CONFIG.NEST_RADIUS * 3) {
       const homeAngle = Math.atan2(this.nestY - this.y, this.nestX - this.x);
       this.angle = this._lerpAngle(this.angle, homeAngle, 0.3);
+    }
+  }
+
+  // ─── QUEEN WANDERING ───────────────────────────────────────────────
+
+  /**
+   * Queen gently wanders within the nest area.
+   * Much slower than workers. Drifts back to nest center if she strays too far.
+   */
+  _queenWander() {
+    this.queenWanderTimer++;
+
+    // Slow random angle change every few ticks
+    if (this.queenWanderTimer % 8 === 0) {
+      this.angle += (Math.random() - 0.5) * 0.6;
+    }
+
+    // If too far from nest center, steer back gently
+    const dx = this.x - this.nestX;
+    const dy = this.y - this.nestY;
+    const dist = Math.hypot(dx, dy);
+    const maxDist = CONFIG.NEST_RADIUS * 0.7; // stay well inside nest
+
+    if (dist > maxDist) {
+      const homeAngle = Math.atan2(-dy, -dx);
+      this.angle = this._lerpAngle(this.angle, homeAngle, 0.25);
+    }
+
+    // Move very slowly (30% of normal ant speed)
+    // Don't move while laying egg (brief pause)
+    if (this.isLayingEgg <= 0) {
+      const spd = CONFIG.ANT_SPEED * 0.3;
+      this.x += Math.cos(this.angle) * spd;
+      this.y += Math.sin(this.angle) * spd;
     }
   }
 

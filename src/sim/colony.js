@@ -20,6 +20,7 @@ export class Colony {
     
     this.eggLayingTimer = 0;
     this.nextAntId = 0;
+    this.nextEggId = 0;
     
     this._initializeStartingAnts();
   }
@@ -120,8 +121,16 @@ export class Colony {
   _layEgg() {
     // Randomly choose worker or soldier (mostly workers)
     const type = Math.random() < 0.8 ? 'WORKER' : 'SOLDIER';
-    this.eggQueue.push({ age: 0, type });
+    
+    // Place egg near queen's current position (she lays from her abdomen)
+    const eggX = this.queen.x - Math.cos(this.queen.angle) * 0.8;
+    const eggY = this.queen.y - Math.sin(this.queen.angle) * 0.8;
+    
+    this.eggQueue.push({ id: this.nextEggId++, age: 0, type, x: eggX, y: eggY });
     this.foodAmount -= 5; // Cost to lay egg
+    
+    // Trigger queen laying animation (pause + gaster contraction for 20 ticks)
+    this.queen.isLayingEgg = 20;
   }
 
   /**

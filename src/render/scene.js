@@ -63,6 +63,9 @@ export class SceneManager {
     // Dying ants tracking (meshKey → { timer, duration })
     this.dyingAnts = new Map();
 
+    // Egg meshes tracking (colonyId_eggIdx → mesh)
+    this.eggMeshes = new Map();
+
     // --- Particle system (fixed-size Points buffer) ---
     this.MAX_PARTICLES = 500;
     const pGeo = new THREE.BufferGeometry();
@@ -708,14 +711,36 @@ export class SceneManager {
       }
     }
 
-    // Queen pulsating abdomen animation
+    // Queen animations
     if (mesh.userData.isQueen) {
+      const U = 1.4; // queen base unit
+      const gW = 0.20 * U; const gH = 0.17 * U; const gD = 0.35 * U;
+
       if (bodies.gaster) {
-        const t = performance.now() * 0.003;
-        const pulse = 1.0 + Math.sin(t) * 0.08;
-        const U = 1.4; // queen base unit
-        const gW = 0.20 * U; const gH = 0.17 * U; const gD = 0.35 * U;
-        bodies.gaster.scale.set(gW * pulse, gH * pulse, gD * pulse);
+        // Check if laying egg (isLayingEgg passed via mesh.userData)
+        const laying = mesh.userData.isLayingEgg || 0;
+        if (laying > 0) {
+          // Contraction animation: gaster squeezes then pushes
+          const progress = 1.0 - (laying / 20); // 0→1 over 20 ticks
+          const squeeze = 1.0 - Math.sin(progress * Math.PI) * 0.25; // contract then release
+          bodies.gaster.scale.set(gW * squeeze * 1.1, gH * squeeze, gD * (1.0 + progress * 0.15));
+        } else {
+          // Normal pulsation
+          const t = performance.now() * 0.003;
+          const pulse = 1.0 + Math.sin(t) * 0.08;
+          bodies.gaster.scale.set(gW * pulse, gH * pulse, gD * pulse);
+        }
+      }
+
+      // Queen gentle leg sway (slower than workers)
+      if (isMoving && bodies.legs) {
+        const t = performance.now() * 0.006; // much slower
+        for (let i = 0; i < bodies.legs.length; i++) {
+          const phase = (i % 3) * (Math.PI * 2 / 3);
+          const swing = Math.sin(t + phase) * 0.12;
+          bodies.legs[i].rotation.x += swing * 0.04;
+          bodies.legs[i].rotation.z = swing * 0.08;
+        }
       }
     }
   }
@@ -730,6 +755,71 @@ export class SceneManager {
       this.antMeshes.delete(id);
       this.antBodies.delete(id);
     }
+  }
+
+  // ─── EGG MESHES ────────────────────────────────────────────────────
+
+  /**
+   * Sync visible egg meshes with colony egg queues.
+   * Creates/removes egg meshes as needed.
+   * Eggs are small white ovals sitting on the ground near the nest.
+   * @param {Array} eggs - combined array of { x, y, age, type, key }
+   */
+  updateEggs(eggs) {
+    const activeKeys = new Set();
+
+    for (const egg of eggs) {
+      activeKeys.add(egg.key);
+      if (!this.eggMeshes.has(egg.key)) {
+        this._createEggMesh(egg.key, egg.x, egg.y);
+      }
+      // Gentle growth animation: eggs start tiny and grow
+      const mesh = this.eggMeshes.get(egg.key);
+      if (mesh) {
+        const growProgress = Math.min(1.0, egg.age / 30); // reach full size over 30 ticks
+        const s = 0.3 + growProgress * 0.7;
+        mesh.scale.set(s, s, s);
+        
+        // Slight wobble
+        const wobble = Math.sin(performance.now() * 0.002 + egg.age * 0.1) * 0.01;
+        mesh.position.y = mesh.userData.baseY + wobble;
+      }
+    }
+
+    // Remove eggs that no longer exist
+    for (const [key, mesh] of this.eggMeshes) {
+      if (!activeKeys.has(key)) {
+        this.scene.remove(mesh);
+        this.eggMeshes.delete(key);
+      }
+    }
+  }
+
+  /**
+   * Create a single egg mesh (small pearly white oval on the ground).
+   */
+  _createEggMesh(key, gridX, gridY) {
+    const worldX = (gridX - CONFIG.WORLD_WIDTH / 2) * CONFIG.CELL_SIZE;
+    const worldZ = (gridY - CONFIG.WORLD_HEIGHT / 2) * CONFIG.CELL_SIZE;
+    const terrainY = this.getTerrainHeight(worldX, worldZ);
+
+    const eggGeo = new THREE.SphereGeometry(0.06, 8, 6);
+    eggGeo.scale(1.0, 0.7, 1.3); // oval shape — elongated
+    const eggMat = new THREE.MeshStandardMaterial({
+      color: 0xf5f0e8, // creamy white
+      emissive: 0x332200,
+      emissiveIntensity: 0.15,
+      roughness: 0.3,
+      metalness: 0.0,
+    });
+    const eggMesh = new THREE.Mesh(eggGeo, eggMat);
+    eggMesh.position.set(worldX, terrainY + 0.03, worldZ);
+    eggMesh.rotation.y = Math.random() * Math.PI * 2;
+    eggMesh.userData.baseY = terrainY + 0.03;
+    eggMesh.scale.set(0.3, 0.3, 0.3); // start small
+
+    this.scene.add(eggMesh);
+    this.eggMeshes.set(key, eggMesh);
   }
 
   // ─── BLOOM POST-PROCESSING ──────────────────────────────────────────

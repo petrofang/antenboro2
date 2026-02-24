@@ -53,6 +53,8 @@ class AntenbOro {
 
       // Track previous hitFlash state for particle triggers
       this._prevHitFlash = new Map();
+      // Track previous queen laying state for egg-burst particles
+      this._prevQueenLaying = new Map();
       
       // Start game loop
       this._setupGameLoop();
@@ -101,6 +103,9 @@ class AntenbOro {
       // Sync all ant meshes to simulation state
       this._updateAntMeshes();
       
+      // Sync egg visuals with colonies
+      this._updateEggMeshes();
+      
       // Update death animations
       this.sceneManager.updateDyingAnts();
 
@@ -143,9 +148,10 @@ class AntenbOro {
     for (const ant of allAnts) {
       const meshKey = `${ant.colonyId}_${ant.id}`;
       if (!ant.isDead) {
-        const isMoving = ant.state !== 'GUARDING' && !ant.isPlayerControlled
-          ? true
-          : (ant.isPlayerControlled ? true : false);
+        // Queen moves slowly inside nest; detect if actually moving
+        const isMoving = ant.type === 'QUEEN'
+          ? (ant.isLayingEgg <= 0) // queen moves unless laying
+          : (ant.state !== 'GUARDING' || ant.isPlayerControlled);
         this.sceneManager.updateAntMesh(
           meshKey, ant.x, ant.y, ant.angle,
           ant.carryingFood, ant.hitFlash, isMoving
@@ -154,6 +160,23 @@ class AntenbOro {
         // Ensure mesh exists
         if (!this.sceneManager.antMeshes.has(meshKey)) {
           this.sceneManager.createAntMesh(meshKey, ant.type, ant.colonyId);
+        }
+
+        // Pass queen laying state to mesh for animation
+        if (ant.type === 'QUEEN') {
+          const mesh = this.sceneManager.antMeshes.get(meshKey);
+          if (mesh) mesh.userData.isLayingEgg = ant.isLayingEgg;
+          
+          // Spawn particles when queen starts laying (fresh transition)
+          const prevLaying = this._prevQueenLaying.get(meshKey) || 0;
+          if (ant.isLayingEgg > 0 && prevLaying === 0) {
+            // Cream-colored puff behind queen's abdomen
+            const wx = (ant.x - CONFIG.WORLD_WIDTH / 2) * CONFIG.CELL_SIZE;
+            const wz = (ant.y - CONFIG.WORLD_HEIGHT / 2) * CONFIG.CELL_SIZE;
+            const wy = this.sceneManager.getTerrainHeight(wx, wz) + 0.1;
+            this.sceneManager.spawnParticles(wx, wy, wz, 8, {r:1, g:0.95, b:0.8}, 0.1, 0.2);
+          }
+          this._prevQueenLaying.set(meshKey, ant.isLayingEgg);
         }
 
         // Spawn bite-spark particles on fresh hit
@@ -173,6 +196,27 @@ class AntenbOro {
         }
       }
     }
+  }
+
+  /**
+   * Sync egg meshes with both colonies' egg queues.
+   * Each egg gets a unique key and a world position where it was laid.
+   */
+  _updateEggMeshes() {
+    const eggs = [];
+    for (const colony of [this.simulation.playerColony, this.simulation.enemyColony]) {
+      for (let i = 0; i < colony.eggQueue.length; i++) {
+        const egg = colony.eggQueue[i];
+        eggs.push({
+          key: `egg_${colony.id}_${egg.id}`,
+          x: egg.x,
+          y: egg.y,
+          age: egg.age,
+          type: egg.type,
+        });
+      }
+    }
+    this.sceneManager.updateEggs(eggs);
   }
 }
 
