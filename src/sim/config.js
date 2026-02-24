@@ -2,7 +2,7 @@
  * Central configuration object for the ant colony simulation.
  * All tunable constants in one place.
  */
-export const CONFIG = {
+const CONFIG = {
   // === SIMULATION TIMING ===
   TICKS_PER_SECOND: 30,        // Main sim runs at 30 ticks/sec (slow relaxed pace, 2.5× slower than original 180)
   SPEED_LEVELS: [1, 2, 4, 8],  // Speed multipliers for overhead view; FPS view always locked to 1×

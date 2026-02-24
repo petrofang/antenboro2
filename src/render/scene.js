@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { CONFIG } from '../sim/config.js';
+import CONFIG from '../sim/config.js';
 
 /**
  * Three.js scene setup with PBR materials and post-processing.

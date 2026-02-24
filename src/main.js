@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { CONFIG } from './sim/config.js';
+import CONFIG from './sim/config.js';
 import { SimulationEngine } from './sim/index.js';
 import { SceneManager } from './render/scene.js';
 import { PlayerController } from './render/player.js';

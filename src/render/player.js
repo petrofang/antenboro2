@@ -1,4 +1,5 @@
-import { CONFIG } from '../sim/config.js';
+import * as THREE from 'three';
+import CONFIG from '../sim/config.js';
 import { Ant } from '../sim/ant.js';
 
 /**

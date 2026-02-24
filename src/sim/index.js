@@ -1,4 +1,4 @@
-import { CONFIG } from './config.js';
+import CONFIG from './config.js';
 import { World } from './world.js';
 import { Colony } from './colony.js';
 
