@@ -55,7 +55,6 @@ class AntenbOro {
       updateStatus('❌ ERROR: ' + err.message);
       throw err;
     }
-    }
   }
 
   _syncAntMeshes() {
