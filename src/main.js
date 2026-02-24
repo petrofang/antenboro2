@@ -199,24 +199,41 @@ class AntenbOro {
   }
 
   /**
-   * Sync egg meshes with both colonies' egg queues.
-   * Each egg gets a unique key and a world position where it was laid.
+   * Sync brood meshes (eggs, larvae, pupae) with both colonies.
+   * Each brood item gets a unique key, position, and lifecycle stage.
    */
   _updateEggMeshes() {
-    const eggs = [];
+    const brood = [];
     for (const colony of [this.simulation.playerColony, this.simulation.enemyColony]) {
-      for (let i = 0; i < colony.eggQueue.length; i++) {
-        const egg = colony.eggQueue[i];
-        eggs.push({
+      // Eggs
+      for (const egg of colony.eggQueue) {
+        brood.push({
           key: `egg_${colony.id}_${egg.id}`,
-          x: egg.x,
-          y: egg.y,
+          x: egg.x, y: egg.y,
           age: egg.age,
-          type: egg.type,
+          stage: 'egg',
+        });
+      }
+      // Larvae
+      for (const larva of colony.larvaQueue) {
+        brood.push({
+          key: `larva_${colony.id}_${larva.id}`,
+          x: larva.x, y: larva.y,
+          age: larva.age,
+          stage: 'larva',
+        });
+      }
+      // Pupae
+      for (const pupa of colony.pupaQueue) {
+        brood.push({
+          key: `pupa_${colony.id}_${pupa.id}`,
+          x: pupa.x, y: pupa.y,
+          age: pupa.age,
+          stage: 'pupa',
         });
       }
     }
-    this.sceneManager.updateEggs(eggs);
+    this.sceneManager.updateBrood(brood);
   }
 }
 

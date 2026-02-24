@@ -757,36 +757,50 @@ export class SceneManager {
     }
   }
 
-  // ─── EGG MESHES ────────────────────────────────────────────────────
+  // ─── BROOD MESHES (EGGS, LARVAE, PUPAE) ─────────────────────────────
 
   /**
-   * Sync visible egg meshes with colony egg queues.
-   * Creates/removes egg meshes as needed.
-   * Eggs are small white ovals sitting on the ground near the nest.
-   * @param {Array} eggs - combined array of { x, y, age, type, key }
+   * Sync visible brood meshes with colony brood queues.
+   * Creates/removes meshes as needed for eggs, larvae, and pupae.
+   * @param {Array} brood - array of { x, y, age, key, stage }
+   *   stage: 'egg' | 'larva' | 'pupa'
    */
-  updateEggs(eggs) {
+  updateBrood(brood) {
     const activeKeys = new Set();
 
-    for (const egg of eggs) {
-      activeKeys.add(egg.key);
-      if (!this.eggMeshes.has(egg.key)) {
-        this._createEggMesh(egg.key, egg.x, egg.y);
+    for (const item of brood) {
+      activeKeys.add(item.key);
+
+      // Create mesh if it doesn't exist
+      if (!this.eggMeshes.has(item.key)) {
+        this._createBroodMesh(item.key, item.x, item.y, item.stage);
       }
-      // Gentle growth animation: eggs start tiny and grow
-      const mesh = this.eggMeshes.get(egg.key);
-      if (mesh) {
-        const growProgress = Math.min(1.0, egg.age / 30); // reach full size over 30 ticks
-        const s = 0.3 + growProgress * 0.7;
+
+      const mesh = this.eggMeshes.get(item.key);
+      if (!mesh) continue;
+
+      // Animate based on stage
+      if (item.stage === 'egg') {
+        // Eggs: grow from small to full over first 30 ticks, gentle wobble
+        const grow = Math.min(1.0, item.age / 30);
+        const s = 0.5 + grow * 0.5;
         mesh.scale.set(s, s, s);
-        
-        // Slight wobble
-        const wobble = Math.sin(performance.now() * 0.002 + egg.age * 0.1) * 0.01;
+        const wobble = Math.sin(performance.now() * 0.002 + item.age * 0.1) * 0.005;
         mesh.position.y = mesh.userData.baseY + wobble;
+      } else if (item.stage === 'larva') {
+        // Larvae: subtle squirm animation
+        const squirm = Math.sin(performance.now() * 0.004 + item.age * 0.05) * 0.08;
+        mesh.rotation.z = squirm;
+        const breathe = 1.0 + Math.sin(performance.now() * 0.003) * 0.05;
+        mesh.scale.set(1, breathe, 1);
+      } else if (item.stage === 'pupa') {
+        // Pupae: very slow subtle pulse
+        const pulse = 1.0 + Math.sin(performance.now() * 0.001) * 0.02;
+        mesh.scale.set(pulse, pulse, pulse);
       }
     }
 
-    // Remove eggs that no longer exist
+    // Remove brood meshes that no longer exist
     for (const [key, mesh] of this.eggMeshes) {
       if (!activeKeys.has(key)) {
         this.scene.remove(mesh);
@@ -796,30 +810,79 @@ export class SceneManager {
   }
 
   /**
-   * Create a single egg mesh (small pearly white oval on the ground).
+   * Create a brood mesh with stage-appropriate appearance.
+   * Egg:   small pearly white oval
+   * Larva: translucent grub (C-curved segmented shape)
+   * Pupa:  amber pill-shaped cocoon
    */
-  _createEggMesh(key, gridX, gridY) {
+  _createBroodMesh(key, gridX, gridY, stage) {
     const worldX = (gridX - CONFIG.WORLD_WIDTH / 2) * CONFIG.CELL_SIZE;
     const worldZ = (gridY - CONFIG.WORLD_HEIGHT / 2) * CONFIG.CELL_SIZE;
     const terrainY = this.getTerrainHeight(worldX, worldZ);
 
-    const eggGeo = new THREE.SphereGeometry(0.06, 8, 6);
-    eggGeo.scale(1.0, 0.7, 1.3); // oval shape — elongated
-    const eggMat = new THREE.MeshStandardMaterial({
-      color: 0xf5f0e8, // creamy white
-      emissive: 0x332200,
-      emissiveIntensity: 0.15,
-      roughness: 0.3,
-      metalness: 0.0,
-    });
-    const eggMesh = new THREE.Mesh(eggGeo, eggMat);
-    eggMesh.position.set(worldX, terrainY + 0.03, worldZ);
-    eggMesh.rotation.y = Math.random() * Math.PI * 2;
-    eggMesh.userData.baseY = terrainY + 0.03;
-    eggMesh.scale.set(0.3, 0.3, 0.3); // start small
+    let mesh;
 
-    this.scene.add(eggMesh);
-    this.eggMeshes.set(key, eggMesh);
+    if (stage === 'egg') {
+      // Small pearly white oval
+      const geo = new THREE.SphereGeometry(0.04, 8, 6);
+      geo.scale(1.0, 0.75, 1.4); // elongated oval
+      const mat = new THREE.MeshStandardMaterial({
+        color: 0xf5f0e8,
+        emissive: 0x443322,
+        emissiveIntensity: 0.2,
+        roughness: 0.25,
+        metalness: 0.0,
+      });
+      mesh = new THREE.Mesh(geo, mat);
+      mesh.scale.set(0.5, 0.5, 0.5); // start small, grows via updateBrood
+
+    } else if (stage === 'larva') {
+      // Grub-like: 3 segments in a slight C-curve, translucent white-yellow
+      const group = new THREE.Group();
+      const segGeo = new THREE.SphereGeometry(0.04, 6, 5);
+      const segMat = new THREE.MeshStandardMaterial({
+        color: 0xfaf0dc,
+        emissive: 0x332200,
+        emissiveIntensity: 0.1,
+        roughness: 0.4,
+        transparent: true,
+        opacity: 0.85,
+      });
+      for (let i = 0; i < 3; i++) {
+        const seg = new THREE.Mesh(segGeo, segMat);
+        const t = (i - 1) * 0.06;
+        seg.position.set(0, Math.abs(t) * 0.3, t); // slight C-curve
+        seg.scale.set(0.8 + (1 - Math.abs(i - 1)) * 0.3, 0.7, 1.0);
+        group.add(seg);
+      }
+      // Tiny dark head dot
+      const headGeo = new THREE.SphereGeometry(0.015, 4, 4);
+      const headMat = new THREE.MeshStandardMaterial({ color: 0x443322, roughness: 0.6 });
+      const head = new THREE.Mesh(headGeo, headMat);
+      head.position.set(0, 0.01, 0.09);
+      group.add(head);
+      mesh = group;
+
+    } else { // pupa
+      // Amber/brown cocoon — pill shape
+      const geo = new THREE.CapsuleGeometry(0.035, 0.07, 4, 8);
+      geo.rotateX(Math.PI / 2); // lay flat
+      const mat = new THREE.MeshStandardMaterial({
+        color: 0xc8a050,
+        emissive: 0x331800,
+        emissiveIntensity: 0.15,
+        roughness: 0.35,
+        metalness: 0.05,
+      });
+      mesh = new THREE.Mesh(geo, mat);
+    }
+
+    mesh.position.set(worldX, terrainY + 0.025, worldZ);
+    mesh.rotation.y = Math.random() * Math.PI * 2;
+    mesh.userData.baseY = terrainY + 0.025;
+
+    this.scene.add(mesh);
+    this.eggMeshes.set(key, mesh);
   }
 
   // ─── BLOOM POST-PROCESSING ──────────────────────────────────────────
