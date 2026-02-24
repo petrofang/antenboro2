@@ -268,7 +268,11 @@ export class SceneManager {
     const worldZ = (y - CONFIG.WORLD_HEIGHT / 2) * CONFIG.CELL_SIZE;
     
     mesh.position.set(worldX, height + 0.2, worldZ);
-    mesh.rotation.y = -angle; // Rotate around vertical axis (Y is up)
+    // Ant model faces +Z; convert grid angle to correct Y rotation.
+    // Grid movement: (cos(angle), sin(angle)) → world (cos(angle), 0, sin(angle)).
+    // Mesh rotation.y = θ → forward = (sin(θ), 0, cos(θ)).
+    // So θ = atan2(cos(angle), sin(angle)) = π/2 - angle.
+    mesh.rotation.y = Math.PI / 2 - angle;
   }
 
   /**

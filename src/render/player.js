@@ -21,6 +21,7 @@ export class PlayerController {
       CONFIG.PLAYER_COLONY_NEST_X,
       CONFIG.PLAYER_COLONY_NEST_Y
     );
+    this.ant.isPlayerControlled = true;
     colony.ants.push(this.ant);
     simulation.setPlayerAnt(this.ant);
     
@@ -32,6 +33,11 @@ export class PlayerController {
     this.yaw = 0;          // Horizontal rotation (left/right)
     this.pitch = 0;         // Vertical rotation (up/down), clamped
     this.mouseSensitivity = 0.002;
+    
+    // Turn rate for A/D keys (radians per tick)
+    this.turnRate = 0.04;
+    // Strafe fraction for A/D (fraction of full speed for sideways component)
+    this.strafeFraction = 0.3;
     
     // Pointer lock state
     this.pointerLocked = false;
@@ -248,48 +254,59 @@ export class PlayerController {
   }
 
   /**
-   * FPS movement: WASD moves relative to where the camera (yaw) is facing.
-   * Forward (W) = direction of camera yaw on the XZ ground plane.
+   * FPS movement: ant body always faces camera yaw direction.
+   * W/S = forward/backward in look direction.
+   * A/D = turn yaw + partial lateral strafe (horse-like side-step).
+   * Mouse = primary look control (no strafe from mouse).
    */
   _updateFPSMovement() {
-    // Build local movement vector from WASD
-    let moveX = 0; // strafe (left/right)
-    let moveZ = 0; // forward/back
+    // Camera forward direction in grid coords
+    // Three.js camera default faces -Z; rotation.y = yaw rotates it.
+    // Camera forward in world = (-sin(yaw), 0, -cos(yaw))
+    // World X = grid X, World Z = grid Y
+    const fwdGridX = -Math.sin(this.yaw);
+    const fwdGridY = -Math.cos(this.yaw);
     
-    if (this.keys['w']) moveZ += 1;
-    if (this.keys['s']) moveZ -= 1;
-    if (this.keys['a']) moveX -= 1;
-    if (this.keys['d']) moveX += 1;
+    // Camera right in grid coords
+    const rightGridX = Math.cos(this.yaw);
+    const rightGridY = -Math.sin(this.yaw);
     
-    if (moveX !== 0 || moveZ !== 0) {
-      // Normalize diagonal movement
-      const len = Math.sqrt(moveX * moveX + moveZ * moveZ);
-      moveX /= len;
-      moveZ /= len;
-      
-      // Rotate movement by camera yaw to get world-relative direction
-      // yaw=0 means looking along +Z in 3D, which maps to grid direction
-      // Forward vector from yaw: (sin(yaw), cos(yaw)) in grid XY
-      const sinYaw = Math.sin(this.yaw);
-      const cosYaw = Math.cos(this.yaw);
-      
-      // forward direction in grid coords
-      const fwdGridX = sinYaw;
-      const fwdGridY = -cosYaw;
-      
-      // right direction in grid coords (perpendicular)
-      const rightGridX = cosYaw;
-      const rightGridY = sinYaw;
-      
-      // Combine forward + strafe
-      const gridDX = (fwdGridX * moveZ + rightGridX * moveX) * CONFIG.ANT_SPEED;
-      const gridDY = (fwdGridY * moveZ + rightGridY * moveX) * CONFIG.ANT_SPEED;
-      
+    // A/D keys: turn the camera yaw (primary function) + small side-step
+    if (this.keys['a']) {
+      this.yaw += this.turnRate; // Turn left
+    }
+    if (this.keys['d']) {
+      this.yaw -= this.turnRate; // Turn right
+    }
+    
+    // Build movement from W/S (full speed) and A/D (partial strafe)
+    let gridDX = 0;
+    let gridDY = 0;
+    
+    if (this.keys['w']) {
+      gridDX += fwdGridX * CONFIG.ANT_SPEED;
+      gridDY += fwdGridY * CONFIG.ANT_SPEED;
+    }
+    if (this.keys['s']) {
+      // Backward at 60% speed (ants don't back up fast)
+      gridDX -= fwdGridX * CONFIG.ANT_SPEED * 0.6;
+      gridDY -= fwdGridY * CONFIG.ANT_SPEED * 0.6;
+    }
+    if (this.keys['a']) {
+      // Partial left strafe (horse-like side-step)
+      gridDX -= rightGridX * CONFIG.ANT_SPEED * this.strafeFraction;
+      gridDY -= rightGridY * CONFIG.ANT_SPEED * this.strafeFraction;
+    }
+    if (this.keys['d']) {
+      // Partial right strafe
+      gridDX += rightGridX * CONFIG.ANT_SPEED * this.strafeFraction;
+      gridDY += rightGridY * CONFIG.ANT_SPEED * this.strafeFraction;
+    }
+    
+    // Apply movement
+    if (gridDX !== 0 || gridDY !== 0) {
       this.ant.x += gridDX;
       this.ant.y += gridDY;
-      
-      // Update ant facing angle to match movement direction
-      this.ant.angle = Math.atan2(gridDY, gridDX);
       
       // Clamp to world bounds
       this.ant.x = Math.max(0, Math.min(CONFIG.WORLD_WIDTH - 1, this.ant.x));
@@ -303,6 +320,9 @@ export class PlayerController {
         );
       }
     }
+    
+    // Always sync ant facing to camera yaw (body faces where we look)
+    this.ant.angle = Math.atan2(fwdGridY, fwdGridX);
   }
 
   /**

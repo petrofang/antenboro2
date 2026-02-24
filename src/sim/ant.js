@@ -39,6 +39,9 @@ export class Ant {
     this.biteCooldown = 0;
     this.targetEnemy = null;
     
+    // Player control flag — when true, AI state machine is skipped
+    this.isPlayerControlled = false;
+    
     // Ant-specific stats
     this.foodDeposited = 0;       // Career total
     this.entsKilled = 0;          // Career total
@@ -65,6 +68,9 @@ export class Ant {
 
     // Decrement cooldowns
     if (this.biteCooldown > 0) this.biteCooldown--;
+
+    // Skip AI state machine for player-controlled ant
+    if (this.isPlayerControlled) return;
 
     // State machine
     switch (this.state) {
