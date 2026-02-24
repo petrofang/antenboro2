@@ -67,8 +67,9 @@ class AntenbOro {
     ];
 
     for (const ant of allAnts) {
-      if (!this.sceneManager.antMeshes.has(ant.id)) {
-        this.sceneManager.createAntMesh(ant.id, ant.type, ant.colonyId);
+      const meshKey = `${ant.colonyId}_${ant.id}`;
+      if (!this.sceneManager.antMeshes.has(meshKey)) {
+        this.sceneManager.createAntMesh(meshKey, ant.type, ant.colonyId);
       }
     }
   }
@@ -121,18 +122,17 @@ class AntenbOro {
 
     // Update existing ant meshes
     for (const ant of allAnts) {
+      const meshKey = `${ant.colonyId}_${ant.id}`;
       if (!ant.isDead) {
-        const worldX = (ant.x - CONFIG.WORLD_WIDTH / 2) * CONFIG.CELL_SIZE;
-        const worldZ = (ant.y - CONFIG.WORLD_HEIGHT / 2) * CONFIG.CELL_SIZE;
-        this.sceneManager.updateAntMesh(ant.id, ant.x, ant.y, ant.angle, 0);
+        this.sceneManager.updateAntMesh(meshKey, ant.x, ant.y, ant.angle, 0);
         
         // Ensure mesh exists
-        if (!this.sceneManager.antMeshes.has(ant.id)) {
-          this.sceneManager.createAntMesh(ant.id, ant.type, ant.colonyId);
+        if (!this.sceneManager.antMeshes.has(meshKey)) {
+          this.sceneManager.createAntMesh(meshKey, ant.type, ant.colonyId);
         }
       } else {
         // Remove dead ant meshes
-        this.sceneManager.removeAntMesh(ant.id);
+        this.sceneManager.removeAntMesh(meshKey);
       }
     }
   }
@@ -148,13 +148,39 @@ class UIManager {
     
     this.hud = document.getElementById('hud');
     this.minimapCanvas = document.getElementById('minimap');
+    this.strategyCanvas = document.getElementById('strategyCanvas');
     
     if (this.minimapCanvas) {
       this.minimapCtx = this.minimapCanvas.getContext('2d');
     }
+    
+    // Strategy canvas (full-screen 2D overhead)
+    if (this.strategyCanvas) {
+      this.strategyCtx = this.strategyCanvas.getContext('2d');
+      this._resizeStrategyCanvas();
+      window.addEventListener('resize', () => this._resizeStrategyCanvas());
+    }
+    
+    // Pan/zoom for strategy view
+    this.stratPanX = CONFIG.WORLD_WIDTH / 2;
+    this.stratPanY = CONFIG.WORLD_HEIGHT / 2;
+    this.stratZoom = 1.0; // 1.0 = fit whole world
+  }
+
+  _resizeStrategyCanvas() {
+    if (!this.strategyCanvas) return;
+    this.strategyCanvas.width = window.innerWidth;
+    this.strategyCanvas.height = window.innerHeight;
   }
 
   update() {
+    const isOverhead = !this.playerController.isFPSMode;
+    
+    // Toggle strategy canvas visibility
+    if (this.strategyCanvas) {
+      this.strategyCanvas.style.display = isOverhead ? 'block' : 'none';
+    }
+    
     // Update HUD text
     const playerStats = this.simulation.getPlayerStats();
     const enemyStats = this.simulation.getEnemyStats();
@@ -190,6 +216,11 @@ class UIManager {
     // Update minimap
     if (this.minimapCtx) {
       this._updateMinimap();
+    }
+    
+    // Update full-screen strategy view when in overhead mode
+    if (isOverhead && this.strategyCtx) {
+      this._updateStrategyView();
     }
   }
 
@@ -304,6 +335,186 @@ class UIManager {
     ctx.strokeStyle = '#00ff00';
     ctx.lineWidth = 1;
     ctx.strokeRect(0, 0, w, h);
+  }
+
+  /**
+   * Full-screen 2D strategy view — like a zoomed-in, pannable minimap.
+   * Shows pheromone trails, ants, food, nests — all rendered as 2D.
+   */
+  _updateStrategyView() {
+    const canvas = this.strategyCanvas;
+    const ctx = this.strategyCtx;
+    const cw = canvas.width;
+    const ch = canvas.height;
+    
+    // Pan state from the player controller overhead coords
+    // Convert 3D world coords back to grid coords for pan center
+    const pc = this.playerController;
+    const panCenterX = (pc.overheadX / CONFIG.CELL_SIZE) + CONFIG.WORLD_WIDTH / 2;
+    const panCenterY = (pc.overheadZ / CONFIG.CELL_SIZE) + CONFIG.WORLD_HEIGHT / 2;
+    
+    // Calculate visible grid area — show ~40 cells wide, proportional height
+    const viewCells = 50; // grid cells visible across screen width
+    const cellPx = cw / viewCells;
+    const viewCellsY = ch / cellPx;
+    
+    const gridLeft = panCenterX - viewCells / 2;
+    const gridTop = panCenterY - viewCellsY / 2;
+    
+    // Helper: grid to screen
+    const gx2sx = (gx) => (gx - gridLeft) * cellPx;
+    const gy2sy = (gy) => (gy - gridTop) * cellPx;
+    
+    // --- Background: earthy dark green ---
+    ctx.fillStyle = '#0d1a0d';
+    ctx.fillRect(0, 0, cw, ch);
+    
+    // --- Draw pheromone trails ---
+    const playerGrid = this.simulation.world.pheromones.getHeatmap(0);
+    const enemyGrid = this.simulation.world.pheromones.getHeatmap(1);
+    
+    const startGX = Math.max(0, Math.floor(gridLeft));
+    const endGX = Math.min(CONFIG.WORLD_WIDTH - 1, Math.ceil(gridLeft + viewCells));
+    const startGY = Math.max(0, Math.floor(gridTop));
+    const endGY = Math.min(CONFIG.WORLD_HEIGHT - 1, Math.ceil(gridTop + viewCellsY));
+    
+    for (let gx = startGX; gx <= endGX; gx++) {
+      for (let gy = startGY; gy <= endGY; gy++) {
+        const pVal = playerGrid[gx] ? playerGrid[gx][gy] : 0;
+        const eVal = enemyGrid[gx] ? enemyGrid[gx][gy] : 0;
+        
+        if (pVal > 3) {
+          const alpha = Math.min(0.75, pVal / 120);
+          ctx.fillStyle = `rgba(0, 200, 80, ${alpha})`;
+          ctx.fillRect(gx2sx(gx), gy2sy(gy), cellPx + 1, cellPx + 1);
+        }
+        if (eVal > 3) {
+          const alpha = Math.min(0.75, eVal / 120);
+          ctx.fillStyle = `rgba(220, 50, 30, ${alpha})`;
+          ctx.fillRect(gx2sx(gx), gy2sy(gy), cellPx + 1, cellPx + 1);
+        }
+      }
+    }
+    
+    // --- Draw food patches ---
+    for (const food of this.simulation.world.foodPatches) {
+      if (food.amount > 0) {
+        const sx = gx2sx(food.x);
+        const sy = gy2sy(food.y);
+        const size = Math.max(4, Math.ceil((food.amount / CONFIG.FOOD_PER_CLUSTER) * cellPx * 1.5));
+        ctx.fillStyle = '#ffcc00';
+        ctx.beginPath();
+        ctx.arc(sx, sy, size / 2, 0, Math.PI * 2);
+        ctx.fill();
+        // Glow
+        ctx.fillStyle = 'rgba(255, 204, 0, 0.2)';
+        ctx.beginPath();
+        ctx.arc(sx, sy, size, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+    
+    // --- Draw nests ---
+    // Player nest (green)
+    const pnsx = gx2sx(CONFIG.PLAYER_COLONY_NEST_X);
+    const pnsy = gy2sy(CONFIG.PLAYER_COLONY_NEST_Y);
+    const nestR = CONFIG.NEST_RADIUS * cellPx;
+    ctx.strokeStyle = '#00ff88';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.arc(pnsx, pnsy, nestR, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.fillStyle = 'rgba(0, 255, 100, 0.12)';
+    ctx.fill();
+    
+    // Enemy nest (red)
+    const ensx = gx2sx(CONFIG.ENEMY_COLONY_NEST_X);
+    const ensy = gy2sy(CONFIG.ENEMY_COLONY_NEST_Y);
+    ctx.strokeStyle = '#ff4444';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.arc(ensx, ensy, nestR, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.fillStyle = 'rgba(255, 50, 50, 0.12)';
+    ctx.fill();
+    ctx.lineWidth = 1;
+    
+    // --- Draw ants ---
+    const antRadius = Math.max(3, cellPx * 0.35);
+    
+    // Player ants (green)
+    for (const ant of this.simulation.playerColony.ants) {
+      if (ant.isDead) continue;
+      const sx = gx2sx(ant.x);
+      const sy = gy2sy(ant.y);
+      // Skip if off-screen
+      if (sx < -20 || sx > cw + 20 || sy < -20 || sy > ch + 20) continue;
+      
+      if (ant.isPlayerControlled) {
+        // Hero ant — bright cyan, larger
+        ctx.fillStyle = '#00ffff';
+        ctx.beginPath();
+        ctx.arc(sx, sy, antRadius * 2, 0, Math.PI * 2);
+        ctx.fill();
+        // Direction indicator
+        ctx.strokeStyle = '#00ffff';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(sx, sy);
+        ctx.lineTo(
+          sx + Math.cos(ant.angle) * antRadius * 5,
+          sy + Math.sin(ant.angle) * antRadius * 5
+        );
+        ctx.stroke();
+        ctx.lineWidth = 1;
+      } else {
+        // Regular player ant — green dot
+        ctx.fillStyle = ant.type === 'SOLDIER' ? '#44ff44' : '#22cc22';
+        if (ant.type === 'QUEEN') ctx.fillStyle = '#88ffaa';
+        ctx.beginPath();
+        ctx.arc(sx, sy, ant.type === 'SOLDIER' ? antRadius * 1.3 : antRadius, 0, Math.PI * 2);
+        ctx.fill();
+        
+        // Direction line
+        ctx.strokeStyle = ctx.fillStyle;
+        ctx.beginPath();
+        ctx.moveTo(sx, sy);
+        ctx.lineTo(
+          sx + Math.cos(ant.angle) * antRadius * 2.5,
+          sy + Math.sin(ant.angle) * antRadius * 2.5
+        );
+        ctx.stroke();
+      }
+    }
+    
+    // Enemy ants (red)
+    for (const ant of this.simulation.enemyColony.ants) {
+      if (ant.isDead) continue;
+      const sx = gx2sx(ant.x);
+      const sy = gy2sy(ant.y);
+      if (sx < -20 || sx > cw + 20 || sy < -20 || sy > ch + 20) continue;
+      
+      ctx.fillStyle = ant.type === 'SOLDIER' ? '#ff4444' : '#ff2222';
+      if (ant.type === 'QUEEN') ctx.fillStyle = '#ff8888';
+      ctx.beginPath();
+      ctx.arc(sx, sy, ant.type === 'SOLDIER' ? antRadius * 1.3 : antRadius, 0, Math.PI * 2);
+      ctx.fill();
+      
+      // Direction line
+      ctx.strokeStyle = ctx.fillStyle;
+      ctx.beginPath();
+      ctx.moveTo(sx, sy);
+      ctx.lineTo(
+        sx + Math.cos(ant.angle) * antRadius * 2.5,
+        sy + Math.sin(ant.angle) * antRadius * 2.5
+      );
+      ctx.stroke();
+    }
+    
+    // --- Grid border (show world boundaries) ---
+    ctx.strokeStyle = 'rgba(0, 255, 0, 0.3)';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(gx2sx(0), gy2sy(0), CONFIG.WORLD_WIDTH * cellPx, CONFIG.WORLD_HEIGHT * cellPx);
   }
 }
 

@@ -335,10 +335,10 @@ export class PlayerController {
 
   /**
    * Overhead mode: WASD pans the camera. Arrow keys control sim speed.
-   * This is the "Ant Simulator" view — a proper top-down strategy view.
+   * This is the "Ant Simulator" view — a proper top-down 2D strategy view.
    */
   _updateOverheadMovement() {
-    const panSpeed = 0.5;
+    const panSpeed = 0.8; // grid cells per frame at 3D scale
     if (this.keys['w']) this.overheadZ -= panSpeed;
     if (this.keys['s']) this.overheadZ += panSpeed;
     if (this.keys['a']) this.overheadX -= panSpeed;

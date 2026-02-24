@@ -24,8 +24,8 @@ export class SceneManager {
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
-    this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 1.0;
+    this.renderer.toneMapping = THREE.LinearToneMapping;
+    this.renderer.toneMappingExposure = 1.2;
     
     // Camera position - start above and behind terrain
     this.camera.position.set(0, 15, 25);
@@ -320,21 +320,32 @@ export class SceneManager {
     const isEnemy = colonyId === 1;
     const isSoldier = type === 'SOLDIER';
     const isQueen = type === 'QUEEN';
-    const scale = isQueen ? 1.6 : (isSoldier ? 1.3 : 1.0);
+    const scale = isQueen ? 1.2 : (isSoldier ? 1.0 : 0.7);
     
     // Body segments (3 ellipsoids: head, thorax, gaster)
     const headGeometry = new THREE.SphereGeometry(0.15 * scale, 8, 8);
     const thoraxGeometry = new THREE.SphereGeometry(0.2 * scale, 8, 8);
     const gasterGeometry = new THREE.SphereGeometry(0.25 * scale, 8, 8);
     
-    // Very distinct colors: player = dark brown/black, enemy = vivid bright red
-    const bodyMaterial = new THREE.MeshStandardMaterial({
-      color: isEnemy ? 0xff2200 : 0x1a1008,
-      roughness: isEnemy ? 0.3 : 0.5,
-      metalness: isEnemy ? 0.15 : 0.05,
-      emissive: isEnemy ? 0x660000 : 0x000000,
-      emissiveIntensity: isEnemy ? 0.4 : 0,
-    });
+    // Realistic ant colors: player = dark brown/black, enemy = reddish-brown
+    let bodyMaterial;
+    if (isEnemy) {
+      bodyMaterial = new THREE.MeshStandardMaterial({
+        color: 0x8b2500,
+        roughness: 0.6,
+        metalness: 0.05,
+        emissive: 0x3a0800,
+        emissiveIntensity: 0.15,
+      });
+    } else {
+      bodyMaterial = new THREE.MeshStandardMaterial({
+        color: 0x1a1a1e,
+        roughness: 0.55,
+        metalness: 0.05,
+        emissive: 0x050508,
+        emissiveIntensity: 0.1,
+      });
+    }
     
     const head = new THREE.Mesh(headGeometry, bodyMaterial);
     const thorax = new THREE.Mesh(thoraxGeometry, bodyMaterial);
@@ -430,7 +441,7 @@ export class SceneManager {
     
     // Sample terrain height so ants sit on the surface
     const terrainY = this.getTerrainHeight(worldX, worldZ);
-    mesh.position.set(worldX, terrainY + 0.15, worldZ);
+    mesh.position.set(worldX, terrainY + 0.3, worldZ);
     // Ant model faces +Z; convert grid angle to correct Y rotation.
     mesh.rotation.y = Math.PI / 2 - angle;
   }
