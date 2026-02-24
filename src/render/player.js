@@ -359,8 +359,9 @@ export class PlayerController {
       const worldX = (this.ant.x - CONFIG.WORLD_WIDTH / 2) * CONFIG.CELL_SIZE;
       const worldZ = (this.ant.y - CONFIG.WORLD_HEIGHT / 2) * CONFIG.CELL_SIZE;
       
-      // Camera at ant head level
-      camera.position.set(worldX, 0.5, worldZ);
+      // Camera at ant head level, on terrain surface
+      const terrainY = this.sceneManager.getTerrainHeight(worldX, worldZ);
+      camera.position.set(worldX, terrainY + 0.5, worldZ);
       
       // Build look direction from yaw & pitch using Euler
       camera.rotation.order = 'YXZ';

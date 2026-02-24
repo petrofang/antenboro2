@@ -12,6 +12,8 @@ export class Ant {
     // Position (float grid coordinates)
     this.x = nestX;
     this.y = nestY;
+    this.nestX = nestX;  // Remember nest location for homing
+    this.nestY = nestY;
     this.angle = Math.random() * Math.PI * 2;
     
     // Life & health
@@ -93,12 +95,7 @@ export class Ant {
   }
 
   _wander(world, colony, otherColony) {
-    // Random walk with slight tendency to turn
-    if (Math.random() < 0.1) {
-      this.angle += (Math.random() - 0.5) * CONFIG.ANT_WANDER_ANGLE_CHANGE;
-    }
-
-    // Detect nearby enemies
+    // Detect nearby enemies first (highest priority)
     const enemy = this._findNearbyEnemy(world, otherColony);
     if (enemy) {
       this.targetEnemy = enemy;
@@ -106,7 +103,7 @@ export class Ant {
       return;
     }
 
-    // Detect nearby food
+    // Detect nearby food via direct line-of-sight
     const food = this._findNearbyFood(world);
     if (food) {
       this.targetFood = food;
@@ -114,12 +111,82 @@ export class Ant {
       return;
     }
 
+    // --- Wall avoidance: sense walls ahead and steer away ---
+    const lookAhead = 4;
+    const aheadX = this.x + Math.cos(this.angle) * lookAhead;
+    const aheadY = this.y + Math.sin(this.angle) * lookAhead;
+    const margin = 3;
+    
+    if (aheadX < margin || aheadX > CONFIG.WORLD_WIDTH - margin ||
+        aheadY < margin || aheadY > CONFIG.WORLD_HEIGHT - margin) {
+      // Steer toward nest (center of activity) when near walls
+      const toNestAngle = Math.atan2(this.nestY - this.y, this.nestX - this.x);
+      this.angle = this._lerpAngle(this.angle, toNestAngle, 0.3);
+      this.angle += (Math.random() - 0.5) * 0.4;
+    }
+
+    // --- Homing instinct: ants that wander too far bias back toward nest ---
+    const distToNest = Math.hypot(this.x - this.nestX, this.y - this.nestY);
+    const maxWanderDist = 35; // Max distance from nest before homesickness kicks in
+    
+    if (distToNest > maxWanderDist) {
+      // Strong pull back toward nest
+      const toNestAngle = Math.atan2(this.nestY - this.y, this.nestX - this.x);
+      const pullStrength = Math.min(0.5, (distToNest - maxWanderDist) / 20);
+      this.angle = this._lerpAngle(this.angle, toNestAngle, pullStrength);
+    } else if (distToNest > maxWanderDist * 0.7) {
+      // Mild bias toward nest at moderate distance
+      if (Math.random() < 0.08) {
+        const toNestAngle = Math.atan2(this.nestY - this.y, this.nestX - this.x);
+        this.angle = this._lerpAngle(this.angle, toNestAngle, 0.15);
+      }
+    }
+
+    // --- Pheromone-guided steering (3-sensor antenna model) ---
+    const sensorDist = CONFIG.PHEROMONE_SENSOR_RANGE;
+    const sensorSpread = CONFIG.PHEROMONE_SENSOR_SPREAD;
+    
+    const leftAngle = this.angle + sensorSpread;
+    const rightAngle = this.angle - sensorSpread;
+    
+    const leftVal = world.readPheromone(
+      this.x + Math.cos(leftAngle) * sensorDist,
+      this.y + Math.sin(leftAngle) * sensorDist,
+      this.pheromoneChannel
+    );
+    const centerVal = world.readPheromone(
+      this.x + Math.cos(this.angle) * sensorDist,
+      this.y + Math.sin(this.angle) * sensorDist,
+      this.pheromoneChannel
+    );
+    const rightVal = world.readPheromone(
+      this.x + Math.cos(rightAngle) * sensorDist,
+      this.y + Math.sin(rightAngle) * sensorDist,
+      this.pheromoneChannel
+    );
+    
+    const maxVal = Math.max(leftVal, centerVal, rightVal);
+    
+    if (maxVal > 5) {
+      // Follow pheromone trail
+      if (leftVal > centerVal && leftVal > rightVal) {
+        this.angle += CONFIG.ANT_ROTATION_SPEED;
+      } else if (rightVal > centerVal && rightVal > leftVal) {
+        this.angle -= CONFIG.ANT_ROTATION_SPEED;
+      }
+    } else {
+      // No pheromone — random walk with moderate turns
+      if (Math.random() < 0.15) {
+        this.angle += (Math.random() - 0.5) * CONFIG.ANT_WANDER_ANGLE_CHANGE * 2;
+      }
+    }
+
     // Move forward
     this._move();
 
-    // Deposit exploratory pheromone (low strength)
-    if (Math.random() < 0.05) {
-      world.depositPheromone(this.x, this.y, this.pheromoneChannel, 20);
+    // Deposit exploratory pheromone
+    if (Math.random() < 0.03) {
+      world.depositPheromone(this.x, this.y, this.pheromoneChannel, 10);
     }
   }
 
@@ -228,31 +295,43 @@ export class Ant {
   }
 
   _move() {
-    const newX = this.x + Math.cos(this.angle) * CONFIG.ANT_SPEED;
-    const newY = this.y + Math.sin(this.angle) * CONFIG.ANT_SPEED;
-
-    // Bounce off world borders by reversing the relevant angle component
-    let hitWall = false;
-    if (newX <= 0 || newX >= CONFIG.WORLD_WIDTH - 1) {
-      this.angle = Math.PI - this.angle; // Reflect horizontally
-      hitWall = true;
+    // Pre-emptive wall avoidance: if next position would be out of bounds,
+    // turn away from the wall instead of moving into it
+    const margin = 2;
+    let newX = this.x + Math.cos(this.angle) * CONFIG.ANT_SPEED;
+    let newY = this.y + Math.sin(this.angle) * CONFIG.ANT_SPEED;
+    
+    if (newX < margin || newX > CONFIG.WORLD_WIDTH - margin ||
+        newY < margin || newY > CONFIG.WORLD_HEIGHT - margin) {
+      // Turn toward center of the world
+      const centerX = CONFIG.WORLD_WIDTH / 2;
+      const centerY = CONFIG.WORLD_HEIGHT / 2;
+      const toCenterAngle = Math.atan2(centerY - this.y, centerX - this.x);
+      this.angle = this._lerpAngle(this.angle, toCenterAngle, 0.5);
+      this.angle += (Math.random() - 0.5) * 0.6;
+      
+      // Recalculate movement with new angle
+      newX = this.x + Math.cos(this.angle) * CONFIG.ANT_SPEED;
+      newY = this.y + Math.sin(this.angle) * CONFIG.ANT_SPEED;
     }
-    if (newY <= 0 || newY >= CONFIG.WORLD_HEIGHT - 1) {
-      this.angle = -this.angle; // Reflect vertically
-      hitWall = true;
-    }
+    
+    this.x = newX;
+    this.y = newY;
 
-    if (hitWall) {
-      // Add some randomness so they don't just ping-pong
-      this.angle += (Math.random() - 0.5) * 0.5;
-    }
-
-    this.x += Math.cos(this.angle) * CONFIG.ANT_SPEED;
-    this.y += Math.sin(this.angle) * CONFIG.ANT_SPEED;
-
-    // Clamp to world bounds (safety net)
+    // Hard clamp as safety net
     this.x = Math.max(1, Math.min(CONFIG.WORLD_WIDTH - 2, this.x));
     this.y = Math.max(1, Math.min(CONFIG.WORLD_HEIGHT - 2, this.y));
+  }
+
+  /**
+   * Interpolate between two angles along the shorter arc.
+   */
+  _lerpAngle(from, to, t) {
+    let diff = to - from;
+    // Normalize to [-PI, PI]
+    while (diff > Math.PI) diff -= Math.PI * 2;
+    while (diff < -Math.PI) diff += Math.PI * 2;
+    return from + diff * t;
   }
 
   _findNearbyFood(world) {

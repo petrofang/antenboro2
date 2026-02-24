@@ -46,6 +46,7 @@ class AntenbOro {
       this.sceneManager.createTerrain();
       this.sceneManager.createNestMeshes();
       this.sceneManager.createFoodMeshes(this.simulation.world.foodPatches);
+      this.sceneManager.snapWorldObjectsToTerrain();
       this._syncAntMeshes();
       
       // Start game loop
@@ -195,61 +196,114 @@ class UIManager {
   _updateMinimap() {
     const w = this.minimapCanvas.width;
     const h = this.minimapCanvas.height;
-    
-    // Clear
-    this.minimapCtx.fillStyle = '#1a1a1a';
-    this.minimapCtx.fillRect(0, 0, w, h);
+    const ctx = this.minimapCtx;
     
     const scaleX = w / CONFIG.WORLD_WIDTH;
     const scaleY = h / CONFIG.WORLD_HEIGHT;
     
-    // Draw food
-    this.minimapCtx.fillStyle = '#ffcc00';
-    for (const food of this.simulation.world.foodPatches) {
-      if (food.amount > 0) {
-        this.minimapCtx.fillRect(food.x * scaleX - 2, food.y * scaleY - 2, 4, 4);
-      }
-    }
+    // --- Background: dark earthy green ---
+    ctx.fillStyle = '#0d1a0d';
+    ctx.fillRect(0, 0, w, h);
     
-    // Draw player ants
-    this.minimapCtx.fillStyle = '#00ff00';
-    for (const ant of this.simulation.playerColony.ants) {
-      if (!ant.isDead) {
-        if (ant.isPlayerControlled) {
-          // Hero ant - draw larger and brighter
-          this.minimapCtx.fillStyle = '#00ffff';
-          this.minimapCtx.fillRect(ant.x * scaleX - 3, ant.y * scaleY - 3, 6, 6);
-          this.minimapCtx.fillStyle = '#00ff00';
-        } else {
-          this.minimapCtx.fillRect(ant.x * scaleX - 1, ant.y * scaleY - 1, 2, 2);
+    // --- Draw pheromone trails ---
+    // Player colony pheromones (green glow)
+    const playerGrid = this.simulation.world.pheromones.getHeatmap(0);
+    const enemyGrid = this.simulation.world.pheromones.getHeatmap(1);
+    
+    // Sample every 2 cells for performance
+    for (let gx = 0; gx < CONFIG.WORLD_WIDTH; gx += 2) {
+      for (let gy = 0; gy < CONFIG.WORLD_HEIGHT; gy += 2) {
+        const pVal = playerGrid[gx][gy];
+        const eVal = enemyGrid[gx][gy];
+        
+        if (pVal > 3) {
+          const alpha = Math.min(0.7, pVal / 150);
+          ctx.fillStyle = `rgba(0, 200, 80, ${alpha})`;
+          ctx.fillRect(gx * scaleX, gy * scaleY, scaleX * 2, scaleY * 2);
+        }
+        if (eVal > 3) {
+          const alpha = Math.min(0.7, eVal / 150);
+          ctx.fillStyle = `rgba(200, 50, 30, ${alpha})`;
+          ctx.fillRect(gx * scaleX, gy * scaleY, scaleX * 2, scaleY * 2);
         }
       }
     }
     
-    // Draw enemy ants
-    this.minimapCtx.fillStyle = '#ff4444';
-    for (const ant of this.simulation.enemyColony.ants) {
-      if (!ant.isDead) {
-        this.minimapCtx.fillRect(ant.x * scaleX - 1, ant.y * scaleY - 1, 2, 2);
+    // --- Draw food patches ---
+    ctx.fillStyle = '#ffcc00';
+    for (const food of this.simulation.world.foodPatches) {
+      if (food.amount > 0) {
+        const size = Math.max(3, Math.ceil((food.amount / CONFIG.FOOD_PER_CLUSTER) * 6));
+        ctx.fillRect(food.x * scaleX - size / 2, food.y * scaleY - size / 2, size, size);
       }
     }
     
-    // Draw nest locations
-    this.minimapCtx.strokeStyle = '#00ff00';
-    this.minimapCtx.strokeRect(
-      CONFIG.PLAYER_COLONY_NEST_X * scaleX - 5,
-      CONFIG.PLAYER_COLONY_NEST_Y * scaleY - 5,
-      10,
-      10
+    // --- Draw nest locations ---
+    // Player nest
+    ctx.strokeStyle = '#00ff88';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(
+      CONFIG.PLAYER_COLONY_NEST_X * scaleX,
+      CONFIG.PLAYER_COLONY_NEST_Y * scaleY,
+      CONFIG.NEST_RADIUS * scaleX, 0, Math.PI * 2
     );
+    ctx.stroke();
+    ctx.fillStyle = 'rgba(0, 255, 100, 0.15)';
+    ctx.fill();
     
-    this.minimapCtx.strokeStyle = '#ff4444';
-    this.minimapCtx.strokeRect(
-      CONFIG.ENEMY_COLONY_NEST_X * scaleX - 5,
-      CONFIG.ENEMY_COLONY_NEST_Y * scaleY - 5,
-      10,
-      10
+    // Enemy nest
+    ctx.strokeStyle = '#ff4444';
+    ctx.beginPath();
+    ctx.arc(
+      CONFIG.ENEMY_COLONY_NEST_X * scaleX,
+      CONFIG.ENEMY_COLONY_NEST_Y * scaleY,
+      CONFIG.NEST_RADIUS * scaleX, 0, Math.PI * 2
     );
+    ctx.stroke();
+    ctx.fillStyle = 'rgba(255, 50, 50, 0.15)';
+    ctx.fill();
+    ctx.lineWidth = 1;
+    
+    // --- Draw ants ---
+    // Player ants (green dots)
+    ctx.fillStyle = '#33ff33';
+    for (const ant of this.simulation.playerColony.ants) {
+      if (!ant.isDead) {
+        if (ant.isPlayerControlled) {
+          // Hero ant — bright cyan, larger
+          ctx.fillStyle = '#00ffff';
+          ctx.beginPath();
+          ctx.arc(ant.x * scaleX, ant.y * scaleY, 4, 0, Math.PI * 2);
+          ctx.fill();
+          // Direction indicator
+          ctx.strokeStyle = '#00ffff';
+          ctx.beginPath();
+          ctx.moveTo(ant.x * scaleX, ant.y * scaleY);
+          ctx.lineTo(
+            (ant.x + Math.cos(ant.angle) * 3) * scaleX,
+            (ant.y + Math.sin(ant.angle) * 3) * scaleY
+          );
+          ctx.stroke();
+          ctx.fillStyle = '#33ff33';
+        } else {
+          ctx.fillRect(ant.x * scaleX - 1, ant.y * scaleY - 1, 2, 2);
+        }
+      }
+    }
+    
+    // Enemy ants (red dots)
+    ctx.fillStyle = '#ff3322';
+    for (const ant of this.simulation.enemyColony.ants) {
+      if (!ant.isDead) {
+        ctx.fillRect(ant.x * scaleX - 1, ant.y * scaleY - 1, 2, 2);
+      }
+    }
+    
+    // --- Border ---
+    ctx.strokeStyle = '#00ff00';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(0, 0, w, h);
   }
 }
 

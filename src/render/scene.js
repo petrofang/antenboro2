@@ -134,8 +134,31 @@ export class SceneManager {
     
     this.scene.add(terrain);
     this.terrain = terrain;
+    
+    // Raycaster for terrain height sampling
+    this._terrainRaycaster = new THREE.Raycaster();
+    this._terrainRayOrigin = new THREE.Vector3();
+    this._terrainRayDir = new THREE.Vector3(0, -1, 0);
+    
     console.log('✓ Terrain created: size=' + size + 'x' + size + ', segments=' + segments);
     return terrain;
+  }
+
+  /**
+   * Sample terrain height at a world XZ position.
+   * Returns the Y value of the terrain surface, or 0 if no hit.
+   */
+  getTerrainHeight(worldX, worldZ) {
+    if (!this.terrain) return 0;
+    
+    this._terrainRayOrigin.set(worldX, 50, worldZ);
+    this._terrainRaycaster.set(this._terrainRayOrigin, this._terrainRayDir);
+    
+    const hits = this._terrainRaycaster.intersectObject(this.terrain);
+    if (hits.length > 0) {
+      return hits[0].point.y;
+    }
+    return 0;
   }
   
   /**
@@ -179,13 +202,30 @@ export class SceneManager {
       
       const worldX = (food.x - CONFIG.WORLD_WIDTH / 2) * CONFIG.CELL_SIZE;
       const worldZ = (food.y - CONFIG.WORLD_HEIGHT / 2) * CONFIG.CELL_SIZE;
+      // Will set Y after terrain is available
       group.position.set(worldX, 0, worldZ);
+      group.userData.worldX = worldX;
+      group.userData.worldZ = worldZ;
       
       this.scene.add(group);
       this.foodMeshes.push(group);
     }
     
     console.log('✓ Food meshes created: ' + foodPatches.length + ' patches');
+  }
+
+  /**
+   * Snap food and nest meshes to terrain height (call after terrain is created).
+   */
+  snapWorldObjectsToTerrain() {
+    for (const mesh of this.foodMeshes) {
+      const h = this.getTerrainHeight(mesh.userData.worldX, mesh.userData.worldZ);
+      mesh.position.y = h;
+    }
+    for (const mesh of this.nestMeshes) {
+      const h = this.getTerrainHeight(mesh.position.x, mesh.position.z);
+      mesh.position.y = h;
+    }
   }
 
   /**
@@ -278,7 +318,7 @@ export class SceneManager {
     
     // Determine color and size
     const isEnemy = colonyId === 1;
-    const bodyColor = isEnemy ? 0xcc3333 : 0x000000;
+    const bodyColor = isEnemy ? 0xb82010 : 0x1a1008;
     const isSoldier = type === 'SOLDIER';
     const scale = isSoldier ? 1.3 : 1.0;
     
@@ -385,11 +425,10 @@ export class SceneManager {
     const worldX = (x - CONFIG.WORLD_WIDTH / 2) * CONFIG.CELL_SIZE;
     const worldZ = (y - CONFIG.WORLD_HEIGHT / 2) * CONFIG.CELL_SIZE;
     
-    mesh.position.set(worldX, height + 0.2, worldZ);
+    // Sample terrain height so ants sit on the surface
+    const terrainY = this.getTerrainHeight(worldX, worldZ);
+    mesh.position.set(worldX, terrainY + 0.15, worldZ);
     // Ant model faces +Z; convert grid angle to correct Y rotation.
-    // Grid movement: (cos(angle), sin(angle)) → world (cos(angle), 0, sin(angle)).
-    // Mesh rotation.y = θ → forward = (sin(θ), 0, cos(θ)).
-    // So θ = atan2(cos(angle), sin(angle)) = π/2 - angle.
     mesh.rotation.y = Math.PI / 2 - angle;
   }
 
