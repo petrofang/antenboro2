@@ -4,16 +4,28 @@ import { SimulationEngine } from './sim/index.js';
 import { SceneManager } from './render/scene.js';
 import { PlayerController } from './render/player.js';
 
+// Immediate diagnostics
+console.log('🚀 main.js loaded');
+const statusEl = document.getElementById('status');
+function updateStatus(msg) {
+  console.log(msg);
+  if (statusEl) statusEl.textContent = msg;
+}
+
+updateStatus('✓ Imports loaded, starting initialization...');
+
 /**
  * Main game application.
  */
 class AntenbOro {
   constructor() {
     try {
-      console.log('Initializing AntenbOro game...');
+      updateStatus('Creating simulation engine...');
+      console.log('Creating simulation engine...');
       
       // Simulation
       this.simulation = new SimulationEngine();
+      updateStatus('✓ Simulation engine created, setting up rendering...');
       console.log('✓ Simulation engine created');
       
       // Rendering
@@ -21,19 +33,25 @@ class AntenbOro {
       if (!canvas) {
         throw new Error('Canvas element not found in DOM');
       }
+      updateStatus('Creating scene manager...');
       this.sceneManager = new SceneManager(canvas);
+      updateStatus('✓ Scene manager created, initializing player...');
       console.log('✓ Scene manager created');
       
       // Player
+      updateStatus('Creating player controller...');
       this.playerController = new PlayerController(
         this.simulation.playerColony,
         this.simulation,
         this.sceneManager
       );
+      updateStatus('✓ Player created, setting up UI...');
       console.log('✓ Player controller created');
       
       // UI
+      updateStatus('Creating UI manager...');
       this.uiManager = new UIManager(this.simulation, this.playerController);
+      updateStatus('✓ UI created, initializing world...');
       console.log('✓ UI manager created');
       
       // Fixed-timestep accumulator
@@ -42,24 +60,34 @@ class AntenbOro {
       this.lastFrameTime = performance.now();
       
       // Initialize world
+      updateStatus('Creating terrain...');
       this.sceneManager.createTerrain();
+      updateStatus('✓ Terrain created, creating test geometry...');
       console.log('✓ Terrain created');
       
       // Create a test cube to verify rendering works
+      updateStatus('Creating test cube...');
       this.sceneManager.createTestCube();
+      updateStatus('✓ Test cube created, syncing ants...');
       console.log('✓ Test cube created (visible orange cube)');
       
       // Create ant meshes for all ants
+      updateStatus('Creating ant meshes...');
       this._syncAntMeshes();
+      updateStatus('✓ Ant meshes synced - ' + this.sceneManager.antMeshes.size + ' ants created, starting game loop...');
       console.log('✓ Ant meshes synced - ' + this.sceneManager.antMeshes.size + ' ants created');
       
       // Start game loop
+      updateStatus('Starting game loop...');
       this._setupGameLoop();
+      updateStatus('✓ Game loop started - READY TO PLAY!');
       console.log('✓ Game loop started');
       
+      updateStatus('🎮 GAME RUNNING! Use WASD to move, TAB for overhead view');
       console.log('🎮 Game initialized successfully!');
     } catch (err) {
       console.error('❌ Error initializing game:', err);
+      updateStatus('❌ ERROR: ' + err.message);
       throw err;
     }
   }
@@ -251,13 +279,22 @@ class UIManager {
 
 // Initialize when DOM is ready
 document.addEventListener('DOMContentLoaded', () => {
+  console.log('📄 DOM loaded, starting game initialization...');
+  const statusEl = document.getElementById('status');
   try {
+    if (statusEl) statusEl.textContent = '📄 DOM loaded, initializing game...';
     window.game = new AntenbOro();
+    // Hide loading screen after 3 seconds
+    setTimeout(() => {
+      const loading = document.getElementById('loading');
+      if (loading) loading.style.display = 'none';
+    }, 3000);
   } catch (err) {
     console.error('Fatal error:', err);
+    if (statusEl) statusEl.innerHTML = `<span style="color: #ff0000;">❌ ERROR</span><br/>${err.message}`;
     const hud = document.getElementById('hud');
     if (hud) {
-      hud.innerHTML = `<div style="color: red;"><h1>ERROR</h1><p>${err.message}</p></div>`;
+      hud.innerHTML = `<div style="color: red;"><h1>ERROR</h1><p>${err.message}</p><pre>${err.stack}</pre></div>`;
     }
   }
 });

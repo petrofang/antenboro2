@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AntenbOro Test - Simple Rendering</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { width: 100%; height: 100%; background: #000; color: #fff; overflow: hidden; }
+    #canvas { display: block; width: 100%; height: 100%; }
+    #status {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      background: rgba(0, 0, 0, 0.9);
+      padding: 40px;
+      border: 2px solid #00ff00;
+      border-radius: 10px;
+      z-index: 1000;
+      font-family: 'Courier New', monospace;
+      text-align: center;
+    }
+  </style>
+</head>
+<body>
+  <canvas id="canvas"></canvas>
+  <div id="status">Loading simple test...</div>
+
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://cdn.jsdelivr.net/npm/three@r169/build/three.module.js"
+    }
+  }
+  </script>
+  
+  <script type="module" src="src/test-simple.js"></script>
+</body>
+</html>
