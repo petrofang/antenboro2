@@ -204,8 +204,13 @@ export class PlayerController {
     
     if (target) {
       target.health -= CONFIG.PLAYER_BITE_DAMAGE;
+      target.hitFlash = 10;
       this.biteCooldown = CONFIG.BITE_COOLDOWN;
-      console.log(`Bit enemy! Damage: ${CONFIG.PLAYER_BITE_DAMAGE}`);
+      // Deposit alarm pheromone to summon allies
+      this.simulation.world.depositPheromone(
+        this.ant.x, this.ant.y, 2, // channel 2 = player alarm
+        CONFIG.ALARM_PHEROMONE_STRENGTH
+      );
     }
   }
 

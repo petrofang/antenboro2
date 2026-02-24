@@ -108,10 +108,12 @@ class AntenbOro {
       const realDt = deltaMs / 1000;
       this.sceneManager.updateParticles(realDt);
 
-      // Update 3D pheromone trails
+      // Update 3D pheromone trails (food + alarm)
       const playerGrid = this.simulation.world.pheromones.getHeatmap(0);
       const enemyGrid = this.simulation.world.pheromones.getHeatmap(1);
-      this.sceneManager.updatePheromoneLayer(playerGrid, enemyGrid);
+      const playerAlarmGrid = this.simulation.world.pheromones.getHeatmap(2);
+      const enemyAlarmGrid = this.simulation.world.pheromones.getHeatmap(3);
+      this.sceneManager.updatePheromoneLayer(playerGrid, enemyGrid, playerAlarmGrid, enemyAlarmGrid);
       
       // Update food visuals
       this.sceneManager.updateFoodMeshes(this.simulation.world.foodPatches);
@@ -407,6 +409,8 @@ class UIManager {
     // --- Draw pheromone trails ---
     const playerGrid = this.simulation.world.pheromones.getHeatmap(0);
     const enemyGrid = this.simulation.world.pheromones.getHeatmap(1);
+    const playerAlarmGrid = this.simulation.world.pheromones.getHeatmap(2);
+    const enemyAlarmGrid = this.simulation.world.pheromones.getHeatmap(3);
     
     const startGX = Math.max(0, Math.floor(gridLeft));
     const endGX = Math.min(CONFIG.WORLD_WIDTH - 1, Math.ceil(gridLeft + viewCells));
@@ -417,6 +421,8 @@ class UIManager {
       for (let gy = startGY; gy <= endGY; gy++) {
         const pVal = playerGrid[gx] ? playerGrid[gx][gy] : 0;
         const eVal = enemyGrid[gx] ? enemyGrid[gx][gy] : 0;
+        const paVal = playerAlarmGrid[gx] ? playerAlarmGrid[gx][gy] : 0;
+        const eaVal = enemyAlarmGrid[gx] ? enemyAlarmGrid[gx][gy] : 0;
         
         if (pVal > 3) {
           const alpha = Math.min(0.75, pVal / 120);
@@ -426,6 +432,14 @@ class UIManager {
         if (eVal > 3) {
           const alpha = Math.min(0.75, eVal / 120);
           ctx.fillStyle = `rgba(220, 50, 30, ${alpha})`;
+          ctx.fillRect(gx2sx(gx), gy2sy(gy), cellPx + 1, cellPx + 1);
+        }
+        // Alarm pheromone: bright yellow/orange pulsing
+        const alarmVal = paVal + eaVal;
+        if (alarmVal > 5) {
+          const pulse = 0.6 + Math.sin(performance.now() * 0.008) * 0.4;
+          const alpha = Math.min(0.9, (alarmVal / 100)) * pulse;
+          ctx.fillStyle = `rgba(255, 160, 0, ${alpha})`;
           ctx.fillRect(gx2sx(gx), gy2sy(gy), cellPx + 1, cellPx + 1);
         }
       }

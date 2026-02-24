@@ -6,11 +6,11 @@ import CONFIG from './config.js';
  */
 export class PheromoneGrid {
   constructor() {
-    // One grid per colony (0 = player, 1 = enemy)
-    this.grids = [
-      this._createEmptyGrid(),
-      this._createEmptyGrid(),
-    ];
+    // Channels: 0=player food, 1=enemy food, 2=player alarm, 3=enemy alarm
+    this.grids = [];
+    for (let i = 0; i < CONFIG.PHEROMONE_CHANNELS; i++) {
+      this.grids.push(this._createEmptyGrid());
+    }
   }
 
   _createEmptyGrid() {
@@ -65,19 +65,18 @@ export class PheromoneGrid {
    * while the high rate (0.999) keeps strong trails around for minutes.
    */
   update() {
-    const rate = CONFIG.PHEROMONE_DECAY_RATE;
-    const floorDrain = 0.02; // Small constant subtracted each tick to clean up weak trails
+    const foodRate = CONFIG.PHEROMONE_DECAY_RATE;
+    const alarmRate = CONFIG.ALARM_DECAY_RATE;
+    const floorDrain = 0.02;
     
     for (let c = 0; c < CONFIG.PHEROMONE_CHANNELS; c++) {
+      const rate = (c >= 2) ? alarmRate : foodRate; // channels 2,3 are alarm
       for (let x = 0; x < CONFIG.WORLD_WIDTH; x++) {
         for (let y = 0; y < CONFIG.WORLD_HEIGHT; y++) {
           let val = this.grids[c][x][y];
           if (val <= 0) continue;
           
-          // Multiplicative decay + small constant drain
           val = val * rate - floorDrain;
-          
-          // Clean up negligible values
           if (val < 0.5) val = 0;
           
           this.grids[c][x][y] = val;

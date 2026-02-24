@@ -43,8 +43,10 @@ export class Ant {
     // Player control flag — when true, AI state machine is skipped
     this.isPlayerControlled = false;
     
-    // Pheromone channel = own colony
+    // Pheromone channel = own colony (food trail)
     this.pheromoneChannel = colonyId;
+    // Alarm pheromone channel = colonyId + 2 (channels 2 & 3)
+    this.alarmChannel = colonyId + 2;
     
     // Stats
     this.foodDeposited = 0;
@@ -75,6 +77,8 @@ export class Ant {
     // --- Always check for nearby enemies first (highest priority) ---
     const enemy = this._findNearbyEnemy(otherColony);
     if (enemy) {
+      // Deposit alarm pheromone — "I found an enemy here!"
+      world.depositPheromone(this.x, this.y, this.alarmChannel, CONFIG.ALARM_PHEROMONE_STRENGTH);
       this._attackEnemy(enemy);
       return;
     }
@@ -82,6 +86,33 @@ export class Ant {
     // If we were fighting but lost target, return to appropriate state
     if (this.state === 'FIGHTING') {
       this.state = (this.carryingFood > 0) ? 'CARRYING' : 'WANDERING';
+    }
+
+    // --- Check for alarm pheromone (reinforcement behavior) ---
+    const alarmSteer = this._alarmPheromoneSteer(world);
+    if (alarmSteer !== null) {
+      const responseChance = this.type === 'SOLDIER'
+        ? CONFIG.ALARM_RESPONSE_SOLDIER
+        : CONFIG.ALARM_RESPONSE_WORKER;
+      if (Math.random() < responseChance && this.state !== 'CARRYING') {
+        // Rush toward the alarm!
+        this.angle += alarmSteer * CONFIG.ANT_TURN_MAX * 1.5;
+        this.state = 'FOLLOWING';
+        this._move();
+        return;
+      }
+    }
+
+    // --- Soldiers default to guarding near nest when nothing else to do ---
+    if (this.type === 'SOLDIER' && this.state === 'WANDERING') {
+      const distToNest = Math.hypot(this.x - this.nestX, this.y - this.nestY);
+      if (distToNest > CONFIG.NEST_RADIUS * 5) {
+        // Drift back toward nest
+        const homeAngle = Math.atan2(this.nestY - this.y, this.nestX - this.x);
+        this.angle = this._lerpAngle(this.angle, homeAngle, 0.15);
+        this._move();
+        return;
+      }
     }
 
     // --- State machine ---
@@ -172,7 +203,10 @@ export class Ant {
     const dist = Math.sqrt(dx * dx + dy * dy);
 
     if (dist > CONFIG.BITE_RANGE) {
-      // Move toward enemy (we'll move in the main _move call)
+      // Move toward enemy — soldiers charge faster
+      const speedMult = this.type === 'SOLDIER' ? 1.3 : 1.0;
+      this.x += Math.cos(this.angle) * CONFIG.ANT_SPEED * speedMult;
+      this.y += Math.sin(this.angle) * CONFIG.ANT_SPEED * speedMult;
       return;
     }
     
@@ -248,6 +282,37 @@ export class Ant {
       this.x + Math.cos(this.angle + ang) * dist,
       this.y + Math.sin(this.angle + ang) * dist,
       this.pheromoneChannel
+    );
+
+    if (L === 0 && F === 0 && R === 0) return null;
+    if (L > F && L > R) return -1;
+    if (R > F && R > L) return  1;
+    return 0;
+  }
+
+  /**
+   * 3-sensor alarm pheromone steering (left / forward / right probes).
+   * Detects alarm from own colony to rush toward fights.
+   * Returns a steer value in [-1, 0, +1] or null if no signal.
+   */
+  _alarmPheromoneSteer(world) {
+    const dist = CONFIG.ALARM_SENSOR_RANGE;
+    const ang = CONFIG.PHEROMONE_SENSOR_SPREAD;
+
+    const L = world.readPheromone(
+      this.x + Math.cos(this.angle - ang) * dist,
+      this.y + Math.sin(this.angle - ang) * dist,
+      this.alarmChannel
+    );
+    const F = world.readPheromone(
+      this.x + Math.cos(this.angle) * dist,
+      this.y + Math.sin(this.angle) * dist,
+      this.alarmChannel
+    );
+    const R = world.readPheromone(
+      this.x + Math.cos(this.angle + ang) * dist,
+      this.y + Math.sin(this.angle + ang) * dist,
+      this.alarmChannel
     );
 
     if (L === 0 && F === 0 && R === 0) return null;

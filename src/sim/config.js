@@ -70,7 +70,15 @@ const CONFIG = {
   // A deposit of 80 stays detectable (>1) for ~7000 ticks ≈ 3.9 minutes.
   PHEROMONE_DECAY_RATE: 0.999, // Multiplier per tick — very slow fade (logarithmic feel)
   PHEROMONE_DIFFUSION: false,  // Spatial diffusion (expensive, disabled by default)
-  PHEROMONE_CHANNELS: 2,       // Player colony + enemy colony
+  PHEROMONE_CHANNELS: 4,       // 0=player food, 1=enemy food, 2=player alarm, 3=enemy alarm
+
+  // === ALARM PHEROMONE ===
+  ALARM_PHEROMONE_STRENGTH: 200, // Deposited when fighting
+  ALARM_DETECT_RANGE: 20,     // How far ants can sense alarm (grid cells)
+  ALARM_DECAY_RATE: 0.995,    // Alarm decays faster than food trail
+  ALARM_SENSOR_RANGE: 6,      // Probe distance for alarm 3-sensor
+  ALARM_RESPONSE_WORKER: 0.4, // Probability a worker responds to alarm (vs. keeps foraging)
+  ALARM_RESPONSE_SOLDIER: 0.9,// Probability a soldier responds to alarm
   
   // === BUILDINGS ===
   BUILDING_TYPES: {

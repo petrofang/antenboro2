@@ -717,10 +717,12 @@ export class SceneManager {
 
   /**
    * Update 3D pheromone visualization from heatmap data.
-   * @param {Array} playerGrid - 2D heatmap for player colony
-   * @param {Array} enemyGrid - 2D heatmap for enemy colony
+   * @param {Array} playerGrid - food trail for player colony
+   * @param {Array} enemyGrid - food trail for enemy colony
+   * @param {Array} playerAlarmGrid - alarm pheromone for player colony
+   * @param {Array} enemyAlarmGrid - alarm pheromone for enemy colony
    */
-  updatePheromoneLayer(playerGrid, enemyGrid) {
+  updatePheromoneLayer(playerGrid, enemyGrid, playerAlarmGrid, enemyAlarmGrid) {
     if (!this.pheromoneInstanced) return;
     const step = this.pheroSampleStep;
     const threshold = 5;
@@ -730,7 +732,11 @@ export class SceneManager {
       for (let gy = 0; gy < CONFIG.WORLD_HEIGHT; gy += step) {
         const pVal = playerGrid[gx] ? (playerGrid[gx][gy] || 0) : 0;
         const eVal = enemyGrid[gx] ? (enemyGrid[gx][gy] || 0) : 0;
-        if (pVal < threshold && eVal < threshold) continue;
+        const paVal = playerAlarmGrid ? (playerAlarmGrid[gx] ? (playerAlarmGrid[gx][gy] || 0) : 0) : 0;
+        const eaVal = enemyAlarmGrid ? (enemyAlarmGrid[gx] ? (enemyAlarmGrid[gx][gy] || 0) : 0) : 0;
+        const alarmVal = paVal + eaVal;
+
+        if (pVal < threshold && eVal < threshold && alarmVal < threshold) continue;
 
         const worldX = (gx - CONFIG.WORLD_WIDTH / 2) * CONFIG.CELL_SIZE;
         const worldZ = (gy - CONFIG.WORLD_HEIGHT / 2) * CONFIG.CELL_SIZE;
@@ -739,11 +745,12 @@ export class SceneManager {
         this._pheroMatrix.makeTranslation(worldX, terrainY + 0.02, worldZ);
         this.pheromoneInstanced.setMatrixAt(idx, this._pheroMatrix);
 
-        // Color: green for player, red for enemy, blend if both
+        // Color: green for player food, red for enemy food, orange for alarm
         const pA = Math.min(1, pVal / 150);
         const eA = Math.min(1, eVal / 150);
-        const r = eA * 0.85;
-        const g = pA * 0.75;
+        const aA = Math.min(1, alarmVal / 100);
+        const r = Math.min(1, eA * 0.85 + aA * 1.0);
+        const g = Math.min(1, pA * 0.75 + aA * 0.5);
         const b = 0;
         this.pheromoneInstanced.instanceColor.setXYZ(idx, r, g, b);
         idx++;
