@@ -178,15 +178,21 @@ export class SceneManager {
   }
 
   /**
-   * Analytical terrain height at a world XZ position.
-   * Uses the same formula as vertex displacement — no raycaster needed.
-   * Local X = world X, local Y = -world Z (due to rotation.x = -PI/2).
+   * Base terrain height (rolling hills only, no mound bumps).
    */
-  getTerrainHeight(worldX, worldZ) {
-    const localY = -worldZ; // local Y maps to world -Z
-    let h = Math.sin(worldX * 0.08) * 0.5
+  getBaseTerrainHeight(worldX, worldZ) {
+    const localY = -worldZ;
+    return Math.sin(worldX * 0.08) * 0.5
          + Math.cos(localY * 0.08) * 0.5
          + Math.sin(worldX * 0.03 + localY * 0.04) * 0.3;
+  }
+
+  /**
+   * Full terrain height including ant hill mound bumps.
+   * Used for ant movement, camera, etc.
+   */
+  getTerrainHeight(worldX, worldZ) {
+    let h = this.getBaseTerrainHeight(worldX, worldZ);
 
     // Add ant hill mound bumps near nest positions
     for (const nest of this.nestPositions) {
@@ -194,12 +200,75 @@ export class SceneManager {
       const dz = worldZ - nest.z;
       const dist = Math.sqrt(dx * dx + dz * dz);
       if (dist < nest.radius) {
-        // Smooth cosine falloff from peak to edge
         const t = dist / nest.radius;
         h += nest.height * (Math.cos(t * Math.PI) * 0.5 + 0.5);
       }
     }
     return h;
+  }
+
+  /**
+   * Bake ant hill mound shapes into the terrain mesh geometry
+   * and color the terrain brown near nests. This makes the ant hill
+   * part of the terrain rather than a separate floating object.
+   */
+  applyNestMoundsToTerrain() {
+    if (!this.terrain || this.nestPositions.length === 0) return;
+
+    const geometry = this.terrain.geometry;
+    const posAttr = geometry.getAttribute('position');
+    const positions = posAttr.array;
+    const vertexCount = posAttr.count;
+
+    const colors = new Float32Array(vertexCount * 3);
+    const grassColor = new THREE.Color(0x3d6b2a);
+    const dirtColor = new THREE.Color(0x8B6914);
+    const temp = new THREE.Color();
+
+    for (let i = 0; i < positions.length; i += 3) {
+      const localX = positions[i];
+      const localY = positions[i + 1];
+      const worldX = localX;
+      const worldZ = -localY;
+
+      let moundH = 0;
+      let blend = 0;
+
+      for (const nest of this.nestPositions) {
+        const dx = worldX - nest.x;
+        const dz = worldZ - nest.z;
+        const dist = Math.sqrt(dx * dx + dz * dz);
+        // Mound height falloff
+        if (dist < nest.radius) {
+          const t = dist / nest.radius;
+          moundH = Math.max(moundH, nest.height * (Math.cos(t * Math.PI) * 0.5 + 0.5));
+        }
+        // Color blends a bit beyond the mound edge
+        const colorRadius = nest.radius * 1.3;
+        if (dist < colorRadius) {
+          const ct = dist / colorRadius;
+          blend = Math.max(blend, 1 - ct);
+        }
+      }
+
+      positions[i + 2] += moundH;
+
+      temp.copy(grassColor).lerp(dirtColor, blend);
+      colors[i] = temp.r;
+      colors[i + 1] = temp.g;
+      colors[i + 2] = temp.b;
+    }
+
+    posAttr.needsUpdate = true;
+    geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+    geometry.computeVertexNormals();
+
+    // Switch material to use vertex colors
+    this.terrain.material.vertexColors = true;
+    this.terrain.material.color.set(0xffffff);
+    this.terrain.material.needsUpdate = true;
+
+    console.log('✓ Nest mounds baked into terrain');
   }
   
   /**
@@ -263,8 +332,10 @@ export class SceneManager {
       const h = this.getTerrainHeight(mesh.userData.worldX, mesh.userData.worldZ);
       mesh.position.y = h;
     }
+    // Nest decorations sit at the base terrain level — the terrain
+    // mesh itself forms the mound shape via applyNestMoundsToTerrain.
     for (const mesh of this.nestMeshes) {
-      const h = this.getTerrainHeight(mesh.position.x, mesh.position.z);
+      const h = this.getBaseTerrainHeight(mesh.position.x, mesh.position.z);
       mesh.position.y = h;
     }
   }
@@ -316,30 +387,10 @@ export class SceneManager {
   _createNestMesh(color, emissive) {
     const group = new THREE.Group();
     
-    // Ant hill mound — smooth lathe profile for natural rounded shape
-    // Profile: ground-level at edge, smooth rise to peak
-    const profilePoints = [];
-    const segments = 12;
-    for (let i = 0; i <= segments; i++) {
-      const t = i / segments; // 0 = top, 1 = base
-      const angle = t * Math.PI / 2;
-      const r = Math.sin(angle) * 4.5; // radius increases toward base
-      const y = Math.cos(angle) * 2.2;  // height decreases toward base
-      profilePoints.push(new THREE.Vector2(r, y));
-    }
-    const moundGeo = new THREE.LatheGeometry(profilePoints, 20);
-    const moundMat = new THREE.MeshStandardMaterial({
-      color: 0x8B6914,       // sandy-brown dirt
-      roughness: 0.95,
-      metalness: 0.0,
-      emissive: 0x2a1a05,
-      emissiveIntensity: 0.15,
-    });
-    const mound = new THREE.Mesh(moundGeo, moundMat);
-    mound.castShadow = true;
-    mound.receiveShadow = true;
-    group.add(mound);
-    
+    // No separate mound mesh — the terrain itself IS the ant hill
+    // (mound shape is baked into terrain via applyNestMoundsToTerrain).
+    // We only add decorations: entrance hole, colony ring, and dirt crumbs.
+
     // Dark entrance hole at the very top of the mound
     const holeGeo = new THREE.CircleGeometry(0.35, 12);
     const holeMat = new THREE.MeshStandardMaterial({
@@ -348,10 +399,11 @@ export class SceneManager {
     });
     const hole = new THREE.Mesh(holeGeo, holeMat);
     hole.rotation.x = -Math.PI / 2;
+    // Positioned at the mound peak height (group sits at base terrain)
     hole.position.set(0, 2.22, 0);
     group.add(hole);
 
-    // Colony color ring around base
+    // Colony color ring around base of the mound
     const ringGeo = new THREE.TorusGeometry(4.0, 0.1, 6, 24);
     const ringMat = new THREE.MeshStandardMaterial({
       color: color,
@@ -361,7 +413,7 @@ export class SceneManager {
     });
     const ring = new THREE.Mesh(ringGeo, ringMat);
     ring.rotation.x = -Math.PI / 2;
-    ring.position.y = 0.05;
+    ring.position.y = 0.12;
     group.add(ring);
     
     // Scattered dirt crumbs around the base

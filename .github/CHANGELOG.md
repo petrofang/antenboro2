@@ -4,6 +4,11 @@ All notable changes to this project.
 
 ## [Unreleased]
 
+### Chamber & Terrain Improvements
+- **Chamber tunnel openings** — `_cutTunnelHoles()` removes sphere geometry triangles where tunnels connect, creating natural open doorways between chambers and corridors
+- **Terrain-integrated ant hills** — Mound shapes baked directly into terrain mesh via `applyNestMoundsToTerrain()` with vertex color blending (green grass → brown dirt); separate LatheGeometry mound removed. Ant hill *is* the terrain now.
+- **Split terrain height API** — `getBaseTerrainHeight()` for rolling hills only; `getTerrainHeight()` includes mound bumps. Nest decorations snap to base height so they don't float.
+
 ### Underground System (Phase 1 — Complete)
 - **Underground data structure** — `ColonyUnderground` graph with nodes (chambers) and edges (tunnels)
 - **Underground 3D scene** — Separate Three.js scene with earthy brown BackSide materials, warm fog, hemisphere lighting
@@ -18,8 +23,8 @@ All notable changes to this project.
 - **HUD mode indicator** — Shows UNDERGROUND / FPS / OVERHEAD with context-appropriate key hints
 
 ### Surface Improvements
-- **Ant hill mounds** — LatheGeometry smooth dirt mounds replace old sphere nests; dark hole on top, colony-color ring at base, scattered crumbs
-- **Terrain-integrated mounds** — `getTerrainHeight()` includes cosine-falloff bumps near nests; ants walk over the hill
+- **Terrain-integrated ant hills** — Mound shapes baked into terrain mesh with vertex color blending; decorations (hole, ring, crumbs) placed on top
+- **Terrain height system** — `getTerrainHeight()` includes cosine-falloff bumps near nests; ants walk over the hill
 - **Player colony queen hidden on surface** — Queen mesh only exists underground now
 
 ### Earlier Features

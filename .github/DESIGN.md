@@ -124,17 +124,17 @@ The underground is a **graph of nodes connected by tunnel edges**:
 - Strategy/overhead view shows surface map; disabled while underground
 
 ### Surface World
-- **Ant hill mounds**: LatheGeometry smooth dirt mounds with dark entrance hole at top, colony-color ring at base, scattered dirt crumbs
-- **Terrain height integration**: `getTerrainHeight()` adds cosine-falloff mound bumps near each nest — ants walk *over* the hill, not through it
+- **Terrain-integrated ant hills**: Mound shapes are baked directly into the terrain mesh via `applyNestMoundsToTerrain()` — the ant hill *is* the terrain, not a separate floating object. Vertex colors blend from green grass to brown dirt near nests. Decorations (entrance hole, colony ring, dirt crumbs) sit on top.
+- **Terrain height**: `getTerrainHeight()` (analytical, no raycast) adds cosine-falloff mound bumps near each nest — ants walk *over* the hill. `getBaseTerrainHeight()` returns rolling hills only (used to position nest decorations at ground level).
 - **Anatomically accurate ant meshes**: Formicidae morphology (head, mesosoma, petiole, gaster, compound eyes, elbowed antennae, jointed legs, mandibles)
 - **Caste differentiation**: Worker (standard), Soldier (massive head + mandibles), Queen (distended physogastric gaster)
 - **Visual effects**: Hit flash, death animation, walking leg animation, food-carrying indicator, particle bursts, bloom post-processing, 3D pheromone trail visualization
 
 ### Underground World
 - **Tunnel tubes**: BackSide TubeGeometry with earthy brown walls, point lights spaced along corridors
-- **Chamber spheres**: BackSide SphereGeometry, type-specific colored lighting (gold=queen, amber=food, red=barracks)
+- **Chamber spheres**: BackSide SphereGeometry with tunnel openings cut via `_cutTunnelHoles()` — triangles facing connected tunnel directions are removed so chambers have natural open doorways
 - **Entrance chamber**: Partial-sphere earthy walls with sky disc at top, strong daylight PointLight pouring down — reads as "hole to the outside"
-- **Tunnel-chamber joins**: Tube endpoints shortened to stop at chamber radius boundary so hollow spaces connect seamlessly
+- **Tunnel-chamber joins**: Tube endpoints shortened to stop at chamber radius boundary; chamber walls have holes cut where tunnels connect, creating seamless walkable connections
 - **Atmosphere**: HemisphereLight (cool sky / warm earth), moderate ambient, short-range warm fog
 
 ### Simulation
@@ -168,6 +168,8 @@ The underground is a **graph of nodes connected by tunnel edges**:
 - [x] Graph data structure for underground (`ColonyUnderground`)
 - [x] Tunnel mesh generation (TubeGeometry with shortened endpoints)
 - [x] Chamber mesh generation (BackSide SphereGeometry interiors)
+- [x] Chamber tunnel openings (`_cutTunnelHoles()` removes faces at connection points)
+- [x] Terrain-integrated ant hills (`applyNestMoundsToTerrain()` bakes mounds + vertex colors into terrain mesh)
 - [x] Wall collision in tunnels (`constrainPosition()`)
 - [ ] Worker auto-dig AI
 - [ ] Multiple tunnel junctions and branching paths

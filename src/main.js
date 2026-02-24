@@ -48,6 +48,7 @@ class AntenbOro {
       this.sceneManager.createNestMeshes();
       this.sceneManager.createFoodMeshes(this.simulation.world.foodPatches);
       this.sceneManager.snapWorldObjectsToTerrain();
+      this.sceneManager.applyNestMoundsToTerrain();
       this.sceneManager.setupBloom();
       this.sceneManager.createPheromoneLayer();
       this._syncAntMeshes();

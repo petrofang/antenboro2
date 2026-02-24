@@ -72,8 +72,9 @@ The underground system uses a graph structure:
 
 Key files:
 - `src/sim/underground.js` — `ColonyUnderground` data structure
-- `src/render/underground.js` — `UndergroundRenderer` (tunnel/chamber mesh generation)
+- `src/render/underground.js` — `UndergroundRenderer` (tunnel/chamber mesh generation, `_cutTunnelHoles()` for chamber openings)
 - `src/render/player.js` — E-key entry/exit, underground FPS movement, tunnel collision
+- `src/render/scene.js` — Surface scene; `applyNestMoundsToTerrain()` bakes ant hill mounds into terrain mesh with vertex colors
 
 ## Performance Notes
 
