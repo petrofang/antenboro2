@@ -9,36 +9,55 @@ import { PlayerController } from './render/player.js';
  */
 class AntenbOro {
   constructor() {
-    // Simulation
-    this.simulation = new SimulationEngine();
-    
-    // Rendering
-    const canvas = document.getElementById('canvas');
-    this.sceneManager = new SceneManager(canvas);
-    
-    // Player
-    this.playerController = new PlayerController(
-      this.simulation.playerColony,
-      this.simulation,
-      this.sceneManager
-    );
-    
-    // UI
-    this.uiManager = new UIManager(this.simulation, this.playerController);
-    
-    // Fixed-timestep accumulator
-    this.accumulator = 0;
-    this.deltaTime = 1 / CONFIG.TICKS_PER_SECOND; // Fixed timestep
-    this.lastFrameTime = performance.now();
-    
-    // Initialize world
-    this.sceneManager.createTerrain();
-    
-    // Create ant meshes for all ants
-    this._syncAntMeshes();
-    
-    // Start game loop
-    this._setupGameLoop();
+    try {
+      console.log('Initializing AntenbOro game...');
+      
+      // Simulation
+      this.simulation = new SimulationEngine();
+      console.log('✓ Simulation engine created');
+      
+      // Rendering
+      const canvas = document.getElementById('canvas');
+      if (!canvas) {
+        throw new Error('Canvas element not found in DOM');
+      }
+      this.sceneManager = new SceneManager(canvas);
+      console.log('✓ Scene manager created');
+      
+      // Player
+      this.playerController = new PlayerController(
+        this.simulation.playerColony,
+        this.simulation,
+        this.sceneManager
+      );
+      console.log('✓ Player controller created');
+      
+      // UI
+      this.uiManager = new UIManager(this.simulation, this.playerController);
+      console.log('✓ UI manager created');
+      
+      // Fixed-timestep accumulator
+      this.accumulator = 0;
+      this.deltaTime = 1 / CONFIG.TICKS_PER_SECOND; // Fixed timestep
+      this.lastFrameTime = performance.now();
+      
+      // Initialize world
+      this.sceneManager.createTerrain();
+      console.log('✓ Terrain created');
+      
+      // Create ant meshes for all ants
+      this._syncAntMeshes();
+      console.log('✓ Ant meshes synced');
+      
+      // Start game loop
+      this._setupGameLoop();
+      console.log('✓ Game loop started');
+      
+      console.log('🎮 Game initialized successfully!');
+    } catch (err) {
+      console.error('❌ Error initializing game:', err);
+      throw err;
+    }
   }
 
   _syncAntMeshes() {
@@ -228,7 +247,15 @@ class UIManager {
 
 // Initialize when DOM is ready
 document.addEventListener('DOMContentLoaded', () => {
-  new AntenbOro();
+  try {
+    window.game = new AntenbOro();
+  } catch (err) {
+    console.error('Fatal error:', err);
+    const hud = document.getElementById('hud');
+    if (hud) {
+      hud.innerHTML = `<div style="color: red;"><h1>ERROR</h1><p>${err.message}</p></div>`;
+    }
+  }
 });
 
 export { AntenbOro };
