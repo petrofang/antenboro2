@@ -1,32 +1,45 @@
 import * as THREE from 'three';
+console.log('✓ THREE imported');
+
 import CONFIG from './sim/config.js';
+console.log('✓ CONFIG imported');
+
 import { SimulationEngine } from './sim/index.js';
+console.log('✓ SimulationEngine imported');
+
 import { SceneManager } from './render/scene.js';
+console.log('✓ SceneManager imported');
+
 import { PlayerController } from './render/player.js';
+console.log('✓ PlayerController imported');
 
 // Immediate diagnostics
-console.log('🚀 main.js loaded');
+console.log('🚀 main.js fully loaded');
 const statusEl = document.getElementById('status');
 function updateStatus(msg) {
   console.log(msg);
   if (statusEl) statusEl.textContent = msg;
 }
 
-updateStatus('✓ Imports loaded, starting initialization...');
+updateStatus('✓ All imports successful, creating game...');
 
 /**
  * Main game application.
  */
 class AntenbOro {
   constructor() {
+    console.log('🎮 Constructor started');
+    updateStatus('🎮 Constructor called...');
     try {
       updateStatus('Creating simulation engine...');
       console.log('Creating simulation engine...');
+      console.log('CONFIG:', CONFIG);
       
       // Simulation
+      console.log('About to create SimulationEngine');
       this.simulation = new SimulationEngine();
-      updateStatus('✓ Simulation engine created, setting up rendering...');
-      console.log('✓ Simulation engine created');
+      console.log('✓✓✓ Simulation created!');
+      console.log('Simulation object:', this.simulation);
       
       // Rendering
       const canvas = document.getElementById('canvas');
@@ -86,8 +99,9 @@ class AntenbOro {
       updateStatus('🎮 GAME RUNNING! Use WASD to move, TAB for overhead view');
       console.log('🎮 Game initialized successfully!');
     } catch (err) {
-      console.error('❌ Error initializing game:', err);
-      updateStatus('❌ ERROR: ' + err.message);
+      console.error('❌ CONSTRUCTOR ERROR:', err);
+      console.error('Stack:', err.stack);
+      updateStatus('❌ ERROR IN CONSTRUCTOR: ' + err.message);
       throw err;
     }
   }
