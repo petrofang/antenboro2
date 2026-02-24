@@ -333,160 +333,325 @@ export class SceneManager {
   }
 
   /**
-   * Create an ant mesh with caste-specific visuals:
-   *   WORKER  — small, sleek, short mandibles
-   *   SOLDIER — medium, large pronounced mandibles (true to real major workers)
-   *   QUEEN   — large engorged gaster (abdomen), small head, pulsates
+   * Create anatomically-detailed ant mesh with caste-specific visuals.
+   *
+   * Real ant (Formicidae) morphology reference:
+   *   HEAD (caput)    — trapezoidal, flattened dorso-ventrally, compound eyes on sides
+   *   MESOSOMA        — elongated thorax, slightly flattened, all 3 leg pairs attach here
+   *   PETIOLE         — narrow waist node(s) connecting thorax to gaster (KEY ant feature)
+   *   GASTER          — teardrop/ovoid abdomen, pointed at rear tip
+   *   MANDIBLES       — curved triangular plates, huge in soldiers (major workers)
+   *   ANTENNAE        — elbowed: scape (base rod) + funiculus (angled whip)
+   *   LEGS            — 3 pairs, each with femur + tibia segments joined at an angle
+   *
+   * Caste differences:
+   *   WORKER  — balanced proportions, small mandibles
+   *   SOLDIER — same thorax/gaster, MUCH larger head + massive mandibles
+   *   QUEEN   — normal head, elongated thorax, hugely distended physogastric gaster
    */
   createAntMesh(id, type, colonyId) {
     const group = new THREE.Group();
-    
+
     const isEnemy = colonyId === 1;
     const isSoldier = type === 'SOLDIER';
     const isQueen = type === 'QUEEN';
-    
-    // --- Caste-specific proportions ---
-    let headR, thoraxR, gasterR, spacing, scale;
+
+    // ─── Base unit scale (all measurements relative to this) ─────
+    const U = isQueen ? 1.4 : (isSoldier ? 0.85 : 0.65);
+
+    // ─── Colony body material ─────
+    const bodyMaterial = isEnemy
+      ? new THREE.MeshStandardMaterial({
+          color: 0x6b1c00, roughness: 0.55, metalness: 0.08,
+          emissive: 0x2a0600, emissiveIntensity: 0.12,
+        })
+      : new THREE.MeshStandardMaterial({
+          color: 0x1a1a1e, roughness: 0.5, metalness: 0.08,
+          emissive: 0x050508, emissiveIntensity: 0.08,
+        });
+
+    // Slightly glossier chitin material for head + mandibles
+    const chitinMaterial = isEnemy
+      ? new THREE.MeshStandardMaterial({
+          color: 0x5a1800, roughness: 0.35, metalness: 0.15,
+          emissive: 0x200500, emissiveIntensity: 0.1,
+        })
+      : new THREE.MeshStandardMaterial({
+          color: 0x151518, roughness: 0.3, metalness: 0.15,
+          emissive: 0x040406, emissiveIntensity: 0.08,
+        });
+
+    const darkMat = new THREE.MeshStandardMaterial({
+      color: 0x0a0a0a, roughness: 0.6, metalness: 0.1,
+    });
+
+    // ─────────────────────────────────────────────────────────────
+    //  HEAD — trapezoidal shape via squashed sphere
+    // ─────────────────────────────────────────────────────────────
+    let headW, headH, headD;
+    if (isSoldier) {
+      // Soldiers: disproportionately large, wide head
+      headW = 0.22 * U; headH = 0.13 * U; headD = 0.20 * U;
+    } else if (isQueen) {
+      // Queen: proportional head (not tiny — real queens have normal heads)
+      headW = 0.12 * U; headH = 0.09 * U; headD = 0.12 * U;
+    } else {
+      // Worker: balanced head
+      headW = 0.12 * U; headH = 0.08 * U; headD = 0.11 * U;
+    }
+    const headGeo = new THREE.SphereGeometry(1, 10, 8);
+    const head = new THREE.Mesh(headGeo, chitinMaterial);
+    head.scale.set(headW, headH, headD);
+
+    // Compound eyes (small dark bumps on sides of head)
+    const eyeGeo = new THREE.SphereGeometry(0.03 * U, 6, 6);
+    const eyeMat = new THREE.MeshStandardMaterial({
+      color: 0x111111, roughness: 0.2, metalness: 0.4,
+    });
+    const eyeL = new THREE.Mesh(eyeGeo, eyeMat);
+    const eyeR = new THREE.Mesh(eyeGeo, eyeMat);
+    eyeL.position.set(-headW * 0.75, headH * 0.3, headD * 0.2);
+    eyeR.position.set(headW * 0.75, headH * 0.3, headD * 0.2);
+    head.add(eyeL);
+    head.add(eyeR);
+
+    // ─────────────────────────────────────────────────────────────
+    //  MESOSOMA (thorax) — elongated, slightly flattened oval
+    // ─────────────────────────────────────────────────────────────
+    let thoraxW, thoraxH, thoraxD;
     if (isQueen) {
-      // Queen: tiny head, normal thorax, huge swollen gaster
-      headR = 0.08; thoraxR = 0.12; gasterR = 0.35; spacing = 0.25; scale = 1.5;
+      // Queen: elongated thorax (to support wing muscles historically)
+      thoraxW = 0.10 * U; thoraxH = 0.09 * U; thoraxD = 0.18 * U;
+    } else {
+      thoraxW = 0.10 * U; thoraxH = 0.08 * U; thoraxD = 0.15 * U;
+    }
+    const thoraxGeo = new THREE.SphereGeometry(1, 10, 8);
+    const thorax = new THREE.Mesh(thoraxGeo, bodyMaterial);
+    thorax.scale.set(thoraxW, thoraxH, thoraxD);
+
+    // ─────────────────────────────────────────────────────────────
+    //  PETIOLE — narrow waist node (THE defining ant feature)
+    // ─────────────────────────────────────────────────────────────
+    const petioleR = 0.03 * U;
+    const petioleGeo = new THREE.SphereGeometry(1, 6, 6);
+    const petiole = new THREE.Mesh(petioleGeo, bodyMaterial);
+    petiole.scale.set(petioleR * 1.2, petioleR, petioleR);
+
+    // ─────────────────────────────────────────────────────────────
+    //  GASTER (abdomen) — teardrop ovoid, pointed at rear
+    // ─────────────────────────────────────────────────────────────
+    let gasterW, gasterH, gasterD;
+    if (isQueen) {
+      // Physogastric queen: hugely distended, elongated gaster
+      gasterW = 0.20 * U; gasterH = 0.17 * U; gasterD = 0.35 * U;
     } else if (isSoldier) {
-      // Soldier: oversized head (for big mandibles), stocky
-      headR = 0.18; thoraxR = 0.16; gasterR = 0.2; spacing = 0.22; scale = 1.0;
+      gasterW = 0.13 * U; gasterH = 0.10 * U; gasterD = 0.16 * U;
     } else {
-      // Worker: small, balanced proportions
-      headR = 0.1; thoraxR = 0.12; gasterR = 0.15; spacing = 0.18; scale = 0.7;
+      gasterW = 0.12 * U; gasterH = 0.09 * U; gasterD = 0.15 * U;
     }
-    
-    // --- Colony color ---
-    let bodyMaterial;
-    if (isEnemy) {
-      bodyMaterial = new THREE.MeshStandardMaterial({
-        color: 0x8b2500, roughness: 0.6, metalness: 0.05,
-        emissive: 0x3a0800, emissiveIntensity: 0.15,
-      });
-    } else {
-      bodyMaterial = new THREE.MeshStandardMaterial({
-        color: 0x1a1a1e, roughness: 0.55, metalness: 0.05,
-        emissive: 0x050508, emissiveIntensity: 0.1,
-      });
-    }
-    
-    // --- Body segments ---
-    const headGeometry = new THREE.SphereGeometry(headR * scale, 8, 8);
-    const thoraxGeometry = new THREE.SphereGeometry(thoraxR * scale, 8, 8);
-    const gasterGeometry = new THREE.SphereGeometry(gasterR * scale, 8, 8);
-    
-    const head = new THREE.Mesh(headGeometry, bodyMaterial);
-    const thorax = new THREE.Mesh(thoraxGeometry, bodyMaterial);
-    const gaster = new THREE.Mesh(gasterGeometry, bodyMaterial);
-    
-    head.position.z = spacing * scale * 1.5;
-    thorax.position.z = 0;
-    gaster.position.z = -spacing * scale * 1.5;
-    
-    // Queen gaster is elongated (squish Y, stretch Z for physogastric look)
-    if (isQueen) {
-      gaster.scale.set(1, 0.8, 1.4);
-    }
-    
+    const gasterGeo = new THREE.SphereGeometry(1, 10, 8);
+    const gaster = new THREE.Mesh(gasterGeo, bodyMaterial);
+    gaster.scale.set(gasterW, gasterH, gasterD);
+
+    // Gaster tip (pointed end / acidopore)
+    const tipGeo = new THREE.ConeGeometry(0.025 * U, 0.06 * U, 6);
+    const gasterTip = new THREE.Mesh(tipGeo, bodyMaterial);
+    gasterTip.rotation.x = Math.PI / 2; // point backward
+    gasterTip.position.z = -gasterD * 0.9;
+    gaster.add(gasterTip);
+
+    // ─── Position body segments along Z axis (front → back) ─────
+    // Segments connect touching: each placed so surfaces meet
+    const headZ    = (thoraxD + headD) * 0.85;        // head front of thorax
+    const thoraxZ  = 0;                                // thorax at origin
+    const petioleZ = -(thoraxD + petioleR * 1.1);     // petiole behind thorax
+    const gasterZ  = petioleZ - (petioleR + gasterD) * 0.9; // gaster behind petiole
+
+    head.position.set(0, headH * 0.15, headZ);
+    thorax.position.set(0, 0, thoraxZ);
+    petiole.position.set(0, -thoraxH * 0.15, petioleZ);
+    gaster.position.set(0, -thoraxH * 0.1, gasterZ);
+
+    // Slight head tilt down (ants look downward naturally)
+    head.rotation.x = 0.15;
+
     head.castShadow = true;
     thorax.castShadow = true;
     gaster.castShadow = true;
     group.add(head);
     group.add(thorax);
+    group.add(petiole);
     group.add(gaster);
-    
-    // --- Mandibles ---
-    // Soldiers get massive mandibles; workers get tiny ones; queen has none
+
+    // ─────────────────────────────────────────────────────────────
+    //  MANDIBLES — curved triangular plates
+    // ─────────────────────────────────────────────────────────────
+    const mandibleMat = new THREE.MeshStandardMaterial({
+      color: 0x4a2800, roughness: 0.25, metalness: 0.3,
+    });
+
     if (isSoldier) {
-      const mGeo = new THREE.ConeGeometry(0.06 * scale, 0.35 * scale, 4);
-      const mMat = new THREE.MeshStandardMaterial({
-        color: 0x4a2800, roughness: 0.3, metalness: 0.3,
-      });
-      const m1 = new THREE.Mesh(mGeo, mMat);
-      const m2 = new THREE.Mesh(mGeo, mMat);
-      const headZ = head.position.z;
-      m1.position.set(-0.1 * scale, -0.02 * scale, headZ + headR * scale * 0.8);
-      m1.rotation.x = Math.PI / 2;
-      m1.rotation.z = 0.4;
-      m2.position.set(0.1 * scale, -0.02 * scale, headZ + headR * scale * 0.8);
-      m2.rotation.x = Math.PI / 2;
-      m2.rotation.z = -0.4;
+      // Soldier: massive curved mandibles (>50% of head width)
+      const mLen = headW * 1.8;
+      const mWid = headW * 0.4;
+      const mGeo = new THREE.BoxGeometry(mWid, 0.02 * U, mLen);
+      // Taper the front end by scaling vertices
+      const mPos = mGeo.getAttribute('position');
+      for (let i = 0; i < mPos.count; i++) {
+        const z = mPos.getZ(i);
+        if (z > 0) { // front half tapers
+          const taper = 1 - (z / (mLen / 2)) * 0.7;
+          mPos.setX(i, mPos.getX(i) * taper);
+        }
+      }
+      mPos.needsUpdate = true;
+      mGeo.computeVertexNormals();
+
+      const m1 = new THREE.Mesh(mGeo, mandibleMat);
+      const m2 = new THREE.Mesh(mGeo, mandibleMat);
+      const mZ = headZ + headD * 0.6;
+      m1.position.set(-headW * 0.35, -headH * 0.3, mZ);
+      m1.rotation.y = 0.35;  // splay outward
+      m1.rotation.x = 0.1;   // slight downward curve
+      m2.position.set(headW * 0.35, -headH * 0.3, mZ);
+      m2.rotation.y = -0.35;
+      m2.rotation.x = 0.1;
       m1.castShadow = true;
       m2.castShadow = true;
       group.add(m1);
       group.add(m2);
     } else if (!isQueen) {
-      // Workers: small mandibles
-      const mGeo = new THREE.ConeGeometry(0.02 * scale, 0.1 * scale, 4);
-      const mMat = new THREE.MeshStandardMaterial({ color: 0x333333, roughness: 0.4 });
-      const m1 = new THREE.Mesh(mGeo, mMat);
-      const m2 = new THREE.Mesh(mGeo, mMat);
-      const headZ = head.position.z;
-      m1.position.set(-0.05 * scale, 0, headZ + headR * scale * 0.7);
-      m1.rotation.x = Math.PI / 2;
-      m1.rotation.z = 0.3;
-      m2.position.set(0.05 * scale, 0, headZ + headR * scale * 0.7);
-      m2.rotation.x = Math.PI / 2;
-      m2.rotation.z = -0.3;
+      // Worker: small paired mandibles
+      const mLen = headW * 0.9;
+      const mWid = headW * 0.25;
+      const mGeo = new THREE.BoxGeometry(mWid, 0.012 * U, mLen);
+      const mPos = mGeo.getAttribute('position');
+      for (let i = 0; i < mPos.count; i++) {
+        const z = mPos.getZ(i);
+        if (z > 0) {
+          const taper = 1 - (z / (mLen / 2)) * 0.65;
+          mPos.setX(i, mPos.getX(i) * taper);
+        }
+      }
+      mPos.needsUpdate = true;
+      mGeo.computeVertexNormals();
+
+      const m1 = new THREE.Mesh(mGeo, mandibleMat);
+      const m2 = new THREE.Mesh(mGeo, mandibleMat);
+      const mZ = headZ + headD * 0.55;
+      m1.position.set(-headW * 0.3, -headH * 0.25, mZ);
+      m1.rotation.y = 0.3;
+      m2.position.set(headW * 0.3, -headH * 0.25, mZ);
+      m2.rotation.y = -0.3;
+      group.add(m1);
+      group.add(m2);
+    } else {
+      // Queen: small mandibles similar to worker
+      const mLen = headW * 0.7;
+      const mGeo = new THREE.BoxGeometry(headW * 0.2, 0.01 * U, mLen);
+      const m1 = new THREE.Mesh(mGeo, mandibleMat);
+      const m2 = new THREE.Mesh(mGeo, mandibleMat);
+      const mZ = headZ + headD * 0.5;
+      m1.position.set(-headW * 0.25, -headH * 0.2, mZ);
+      m1.rotation.y = 0.25;
+      m2.position.set(headW * 0.25, -headH * 0.2, mZ);
+      m2.rotation.y = -0.25;
       group.add(m1);
       group.add(m2);
     }
-    
-    // --- Antennae ---
-    const antennaGeo = new THREE.CylinderGeometry(0.01 * scale, 0.005 * scale, 0.3 * scale, 4);
-    const antennaMat = new THREE.MeshStandardMaterial({ color: 0x222222, roughness: 0.5 });
-    const a1 = new THREE.Mesh(antennaGeo, antennaMat);
-    const a2 = new THREE.Mesh(antennaGeo, antennaMat);
-    const antZ = head.position.z + headR * scale * 0.5;
-    a1.position.set(-0.06 * scale, 0.04 * scale, antZ);
-    a1.rotation.x = -0.4;
-    a1.rotation.z = -0.2;
-    a2.position.set(0.06 * scale, 0.04 * scale, antZ);
-    a2.rotation.x = -0.4;
-    a2.rotation.z = 0.2;
-    group.add(a1);
-    group.add(a2);
-    
-    // --- Legs (6) ---
-    const legGeo = new THREE.CylinderGeometry(0.012 * scale, 0.008 * scale, 0.2 * scale, 4);
-    const legMat = new THREE.MeshStandardMaterial({ color: 0x1a1a1a, roughness: 0.6 });
+
+    // ─────────────────────────────────────────────────────────────
+    //  ANTENNAE — elbowed: scape (base) + funiculus (angled whip)
+    // ─────────────────────────────────────────────────────────────
+    const scapeLen = 0.12 * U;
+    const funLen = 0.15 * U;
+    const antR = 0.008 * U;
+    const scapeGeo = new THREE.CylinderGeometry(antR, antR * 0.9, scapeLen, 4);
+    const funGeo = new THREE.CylinderGeometry(antR * 0.7, antR * 0.5, funLen, 4);
+
+    for (let side = -1; side <= 1; side += 2) {
+      // Scape: rises upward and slightly outward from front of head
+      const scape = new THREE.Mesh(scapeGeo, darkMat);
+      const aX = side * headW * 0.4;
+      const aY = headH * 0.6;
+      const aZ = headZ + headD * 0.5;
+      scape.position.set(aX, aY, aZ);
+      scape.rotation.z = side * -0.3;
+      scape.rotation.x = -0.6; // angle forward-up
+
+      // Funiculus: bends at elbow, angles forward
+      const fun = new THREE.Mesh(funGeo, darkMat);
+      fun.position.set(0, scapeLen * 0.45, 0);
+      fun.rotation.x = 0.8; // elbow bend
+      fun.rotation.z = side * 0.15;
+      scape.add(fun);
+
+      group.add(scape);
+    }
+
+    // ─────────────────────────────────────────────────────────────
+    //  LEGS — 3 pairs, 2 segments each (femur + tibia), jointed
+    // ─────────────────────────────────────────────────────────────
+    const femurLen = 0.12 * U;
+    const tibiaLen = 0.14 * U;
+    const legR = 0.008 * U;
+    const femurGeo = new THREE.CylinderGeometry(legR, legR * 0.8, femurLen, 4);
+    const tibiaGeo = new THREE.CylinderGeometry(legR * 0.7, legR * 0.5, tibiaLen, 4);
+    const legMat = darkMat;
+
     const legs = [];
     for (let i = 0; i < 6; i++) {
-      const leg = new THREE.Mesh(legGeo, legMat);
       const side = i < 3 ? -1 : 1;
-      const pair = i % 3;
-      leg.position.set(
-        side * thoraxR * scale * 0.9,
-        -thoraxR * scale * 0.7,
-        (pair - 1) * spacing * scale * 0.8
-      );
-      leg.rotation.z = side * 0.4;
-      group.add(leg);
-      legs.push(leg);
+      const pair = i % 3; // 0=front, 1=mid, 2=rear
+
+      // Leg attachment point on thorax
+      const legGroup = new THREE.Group();
+      const attachZ = thoraxZ + (1 - pair) * thoraxD * 0.55;
+      const attachX = side * thoraxW * 0.85;
+      const attachY = -thoraxH * 0.4;
+      legGroup.position.set(attachX, attachY, attachZ);
+
+      // Femur: angles outward and downward
+      const femur = new THREE.Mesh(femurGeo, legMat);
+      femur.position.set(side * femurLen * 0.35, -femurLen * 0.2, 0);
+      femur.rotation.z = side * 0.8; // splay outward
+      // Front legs angle forward, rear legs angle backward
+      femur.rotation.x = (pair - 1) * 0.3;
+
+      // Tibia: bends downward from femur tip
+      const tibia = new THREE.Mesh(tibiaGeo, legMat);
+      tibia.position.set(side * 0.01, -femurLen * 0.45, 0);
+      tibia.rotation.z = side * -0.5; // bend inward/downward
+      femur.add(tibia);
+
+      legGroup.add(femur);
+      group.add(legGroup);
+      legs.push(legGroup);
     }
-    
-    // --- Food-carrying indicator (golden sphere, hidden by default) ---
-    const foodGeo = new THREE.SphereGeometry(0.08 * scale, 6, 6);
+
+    // ─────────────────────────────────────────────────────────────
+    //  FOOD-CARRYING INDICATOR (golden sphere, hidden by default)
+    // ─────────────────────────────────────────────────────────────
+    const foodGeo = new THREE.SphereGeometry(0.06 * U, 6, 6);
     const foodMat = new THREE.MeshStandardMaterial({
       color: 0xffcc00, emissive: 0x664400, emissiveIntensity: 0.5, roughness: 0.4,
     });
     const foodIndicator = new THREE.Mesh(foodGeo, foodMat);
-    foodIndicator.position.set(0, thoraxR * scale + 0.12 * scale, 0);
+    // Position between mandibles (ant carries food in front)
+    foodIndicator.position.set(0, 0, headZ + headD * 0.8);
     foodIndicator.visible = false;
     group.add(foodIndicator);
 
-    // Store metadata for animation
+    // ─── Store metadata ─────
     group.userData.antType = type;
     group.userData.isQueen = isQueen;
     group.userData.birthTick = performance.now();
     group.userData.originalMaterial = bodyMaterial;
-    
+
     this.scene.add(group);
     this.antMeshes.set(id, group);
-    this.antBodies.set(id, { head, thorax, gaster, legs, foodIndicator });
-    
+    this.antBodies.set(id, { head, thorax, petiole, gaster, legs, foodIndicator });
+
     return group;
   }
 
@@ -513,11 +678,12 @@ export class SceneManager {
     const bodies = this.antBodies.get(id);
     if (!bodies) return;
 
-    // --- Food-carrying indicator (golden bobbing sphere) ---
+    // --- Food-carrying indicator (golden sphere between mandibles) ---
     if (bodies.foodIndicator) {
       bodies.foodIndicator.visible = carryingFood > 0;
       if (carryingFood > 0) {
-        bodies.foodIndicator.position.y = 0.25 + Math.sin(performance.now() * 0.005) * 0.03;
+        // Gentle bob while carried
+        bodies.foodIndicator.position.y = Math.sin(performance.now() * 0.005) * 0.015;
       }
     }
 
@@ -526,18 +692,19 @@ export class SceneManager {
     if (bodies.head.material !== mat) {
       bodies.head.material = mat;
       bodies.thorax.material = mat;
+      if (bodies.petiole) bodies.petiole.material = mat;
       bodies.gaster.material = mat;
     }
 
-    // --- Walking leg animation (tripod gait) ---
+    // --- Walking leg animation (tripod gait with jointed legs) ---
     if (isMoving && bodies.legs && !mesh.userData.isQueen) {
       const t = performance.now() * 0.015;
       for (let i = 0; i < bodies.legs.length; i++) {
         const phase = (i % 3) * (Math.PI * 2 / 3);
-        const side = i < 3 ? -1 : 1;
-        const swing = Math.sin(t + phase) * 0.3;
-        bodies.legs[i].rotation.z = side * 0.4 + swing;
-        bodies.legs[i].rotation.x = Math.sin(t + phase) * 0.15;
+        const swing = Math.sin(t + phase) * 0.25;
+        // Rotate the whole leg group (femur + tibia follow)
+        bodies.legs[i].rotation.x += swing * 0.08;
+        bodies.legs[i].rotation.z = swing * 0.15;
       }
     }
 
@@ -545,8 +712,10 @@ export class SceneManager {
     if (mesh.userData.isQueen) {
       if (bodies.gaster) {
         const t = performance.now() * 0.003;
-        const pulse = 1.0 + Math.sin(t) * 0.12;
-        bodies.gaster.scale.set(pulse, 0.8 * pulse, 1.4 * pulse);
+        const pulse = 1.0 + Math.sin(t) * 0.08;
+        const U = 1.4; // queen base unit
+        const gW = 0.20 * U; const gH = 0.17 * U; const gD = 0.35 * U;
+        bodies.gaster.scale.set(gW * pulse, gH * pulse, gD * pulse);
       }
     }
   }
