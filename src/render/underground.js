@@ -94,19 +94,37 @@ export class UndergroundRenderer {
    * Create a tube corridor between two nodes.
    */
   _createTunnelMesh(from, to, width) {
+    // Shorten tunnel endpoints to stop at node radius boundaries
+    // so tube walls don't extend into chamber interiors
+    const fullDir = new THREE.Vector3(to.x - from.x, to.y - from.y, to.z - from.z);
+    const fullLen = fullDir.length();
+    const dir = fullDir.clone().normalize();
+
+    const fromR = from.radius || 0.8;
+    const toR = to.radius || 0.8;
+    // Pull start/end inward by 80% of each node's radius
+    const startOffset = Math.min(fromR * 0.8, fullLen * 0.3);
+    const endOffset = Math.min(toR * 0.8, fullLen * 0.3);
+
+    const p0 = new THREE.Vector3(from.x, from.y, from.z).addScaledVector(dir, startOffset);
+    const p2 = new THREE.Vector3(to.x, to.y, to.z).addScaledVector(dir, -endOffset);
+
     const points = [
-      new THREE.Vector3(from.x, from.y, from.z),
+      p0,
       // Midpoint with slight sag for natural look
       new THREE.Vector3(
-        (from.x + to.x) / 2,
-        (from.y + to.y) / 2 - 0.1,
-        (from.z + to.z) / 2
+        (p0.x + p2.x) / 2,
+        (p0.y + p2.y) / 2 - 0.1,
+        (p0.z + p2.z) / 2
       ),
-      new THREE.Vector3(to.x, to.y, to.z),
+      p2,
     ];
 
     const path = new THREE.CatmullRomCurve3(points);
     const tubeGeo = new THREE.TubeGeometry(path, 16, width, 8, false);
+    // Remove end caps by deleting cap faces — open-ended tube
+    // TubeGeometry with closed=false still renders the tube sides without caps
+    // But to be safe, we create with open ends
     const tube = new THREE.Mesh(tubeGeo, this.tunnelMaterial);
     tube.receiveShadow = true;
 

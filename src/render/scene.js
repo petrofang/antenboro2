@@ -50,6 +50,8 @@ export class SceneManager {
     
     // Nest meshes
     this.nestMeshes = [];
+    // Nest world positions for mound height calculation
+    this.nestPositions = [];  // [{x, z, radius, height}]
     
     // Ant meshes
     this.antMeshes = new Map(); // id → mesh
@@ -182,9 +184,22 @@ export class SceneManager {
    */
   getTerrainHeight(worldX, worldZ) {
     const localY = -worldZ; // local Y maps to world -Z
-    return Math.sin(worldX * 0.08) * 0.5
+    let h = Math.sin(worldX * 0.08) * 0.5
          + Math.cos(localY * 0.08) * 0.5
          + Math.sin(worldX * 0.03 + localY * 0.04) * 0.3;
+
+    // Add ant hill mound bumps near nest positions
+    for (const nest of this.nestPositions) {
+      const dx = worldX - nest.x;
+      const dz = worldZ - nest.z;
+      const dist = Math.sqrt(dx * dx + dz * dz);
+      if (dist < nest.radius) {
+        // Smooth cosine falloff from peak to edge
+        const t = dist / nest.radius;
+        h += nest.height * (Math.cos(t * Math.PI) * 0.5 + 0.5);
+      }
+    }
+    return h;
   }
   
   /**
@@ -284,6 +299,7 @@ export class SceneManager {
     playerNest.position.set(pnx, 0, pnz);
     this.scene.add(playerNest);
     this.nestMeshes.push(playerNest);
+    this.nestPositions.push({ x: pnx, z: pnz, radius: 4.5, height: 2.2 });
     
     // Enemy nest (red mound)
     const enemyNest = this._createNestMesh(0xcc3333, 0x441111);
@@ -292,6 +308,7 @@ export class SceneManager {
     enemyNest.position.set(enx, 0, enz);
     this.scene.add(enemyNest);
     this.nestMeshes.push(enemyNest);
+    this.nestPositions.push({ x: enx, z: enz, radius: 4.5, height: 2.2 });
     
     console.log('✓ Nest meshes created');
   }
@@ -299,8 +316,18 @@ export class SceneManager {
   _createNestMesh(color, emissive) {
     const group = new THREE.Group();
     
-    // Ant hill mound — cone shape rising from the ground
-    const moundGeo = new THREE.ConeGeometry(3, 2.2, 16, 4);
+    // Ant hill mound — smooth lathe profile for natural rounded shape
+    // Profile: ground-level at edge, smooth rise to peak
+    const profilePoints = [];
+    const segments = 12;
+    for (let i = 0; i <= segments; i++) {
+      const t = i / segments; // 0 = top, 1 = base
+      const angle = t * Math.PI / 2;
+      const r = Math.sin(angle) * 4.5; // radius increases toward base
+      const y = Math.cos(angle) * 2.2;  // height decreases toward base
+      profilePoints.push(new THREE.Vector2(r, y));
+    }
+    const moundGeo = new THREE.LatheGeometry(profilePoints, 20);
     const moundMat = new THREE.MeshStandardMaterial({
       color: 0x8B6914,       // sandy-brown dirt
       roughness: 0.95,
@@ -309,38 +336,23 @@ export class SceneManager {
       emissiveIntensity: 0.15,
     });
     const mound = new THREE.Mesh(moundGeo, moundMat);
-    mound.position.y = 1.1;   // half-height so base sits on ground
     mound.castShadow = true;
     mound.receiveShadow = true;
     group.add(mound);
-
-    // Wider base skirt — dirt apron around the mound
-    const baseGeo = new THREE.CylinderGeometry(3.5, 4.5, 0.3, 16);
-    const baseMat = new THREE.MeshStandardMaterial({
-      color: 0x7a5c1a,
-      roughness: 1.0,
-      metalness: 0.0,
-    });
-    const base = new THREE.Mesh(baseGeo, baseMat);
-    base.position.y = 0.15;
-    base.castShadow = true;
-    base.receiveShadow = true;
-    group.add(base);
     
-    // Dark entrance hole at the top of the mound
-    const holeGeo = new THREE.CircleGeometry(0.4, 12);
+    // Dark entrance hole at the very top of the mound
+    const holeGeo = new THREE.CircleGeometry(0.35, 12);
     const holeMat = new THREE.MeshStandardMaterial({
       color: 0x0a0804,
       roughness: 1.0,
-      emissive: 0x000000,
     });
     const hole = new THREE.Mesh(holeGeo, holeMat);
     hole.rotation.x = -Math.PI / 2;
-    hole.position.set(0, 2.15, 0); // on top of the mound
+    hole.position.set(0, 2.22, 0);
     group.add(hole);
 
-    // Colony color ring around base — indicates team ownership
-    const ringGeo = new THREE.TorusGeometry(3.8, 0.12, 6, 24);
+    // Colony color ring around base
+    const ringGeo = new THREE.TorusGeometry(4.0, 0.1, 6, 24);
     const ringMat = new THREE.MeshStandardMaterial({
       color: color,
       emissive: emissive,
@@ -349,21 +361,21 @@ export class SceneManager {
     });
     const ring = new THREE.Mesh(ringGeo, ringMat);
     ring.rotation.x = -Math.PI / 2;
-    ring.position.y = 0.2;
+    ring.position.y = 0.05;
     group.add(ring);
     
     // Scattered dirt crumbs around the base
-    const crumbGeo = new THREE.SphereGeometry(0.25, 6, 4);
+    const crumbGeo = new THREE.SphereGeometry(0.2, 6, 4);
     const crumbMat = new THREE.MeshStandardMaterial({
-      color: 0x8B6914,
+      color: 0x7a5c1a,
       roughness: 1.0,
     });
-    for (let i = 0; i < 8; i++) {
+    for (let i = 0; i < 10; i++) {
       const crumb = new THREE.Mesh(crumbGeo, crumbMat);
-      const a = (i / 8) * Math.PI * 2 + Math.random() * 0.4;
-      const dist = 4.2 + Math.random() * 1.5;
-      crumb.position.set(Math.cos(a) * dist, 0.1, Math.sin(a) * dist);
-      crumb.scale.setScalar(0.3 + Math.random() * 0.6);
+      const a = (i / 10) * Math.PI * 2 + Math.random() * 0.3;
+      const dist = 4.5 + Math.random() * 2.0;
+      crumb.position.set(Math.cos(a) * dist, 0.08, Math.sin(a) * dist);
+      crumb.scale.setScalar(0.3 + Math.random() * 0.7);
       crumb.castShadow = true;
       group.add(crumb);
     }
