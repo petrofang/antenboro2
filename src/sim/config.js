@@ -36,6 +36,8 @@ const CONFIG = {
   ANT_SPEED: 0.3,              // Grid cells per tick (at 1× speed)
   ANT_ROTATION_SPEED: 0.15,    // Radians per tick for turning
   ANT_WANDER_ANGLE_CHANGE: 0.3, // Radians per tick while wandering
+  ANT_TURN_MAX: 0.45,          // Max pheromone steer adjustment per tick (radians)
+  ANT_WANDER_PROBABILITY: 0.55, // Probability of ignoring pheromone trail (natural variation)
   
   // === ANT BEHAVIOR: COMBAT ===
   SOLDIER_DAMAGE: 2,
@@ -51,8 +53,8 @@ const CONFIG = {
   PHEROMONE_STRENGTH_FOOD: 100,
   PHEROMONE_STRENGTH_HOME: 80,
   PHEROMONE_DEPOSIT_RATE: 3,   // Every N ticks while moving
-  PHEROMONE_SENSOR_RANGE: 2,   // Cells ahead to sense pheromone
-  PHEROMONE_SENSOR_SPREAD: 1,  // Angle spread (radians) of sensors
+  PHEROMONE_SENSOR_RANGE: 4,   // Cells ahead to sense pheromone
+  PHEROMONE_SENSOR_SPREAD: 0.75,  // Angle spread (radians) of side sensors
   
   // === ANT BEHAVIOR: LIFE CYCLE ===
   EGG_INCUBATION_TICKS: 300,   // Ticks for egg → larva

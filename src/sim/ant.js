@@ -2,17 +2,22 @@ import CONFIG from './config.js';
 
 /**
  * Ant entity with state machine, movement, and combat logic.
+ * AI modelled after petrofang/ant_simulator:
+ *   WANDERING / FOLLOWING — forage for food (combined in _forage)
+ *   CARRYING             — return home depositing pheromone trail, U-turn on deposit
+ *   FIGHTING             — attack nearby enemy
+ *   GUARDING             — soldier patrols near nest
  */
 export class Ant {
   constructor(id, type, colonyId, nestX, nestY) {
     this.id = id;
-    this.type = type;              // 'WORKER' or 'SOLDIER'
+    this.type = type;              // 'WORKER', 'SOLDIER', or 'QUEEN'
     this.colonyId = colonyId;      // 0 = player, 1 = enemy
     
     // Position (float grid coordinates)
     this.x = nestX;
     this.y = nestY;
-    this.nestX = nestX;  // Remember nest location for homing
+    this.nestX = nestX;
     this.nestY = nestY;
     this.angle = Math.random() * Math.PI * 2;
     
@@ -30,293 +35,259 @@ export class Ant {
     
     // Foraging
     this.carryingFood = 0;
-    this.foodSearchTimer = 0;
-    this.targetFood = null;       // Reference to food grid cell
-    
-    // Pheromone following
-    this.followingPheromone = false;
-    this.pheromoneChannel = colonyId; // Which pheromone to follow
     
     // Combat
     this.biteCooldown = 0;
-    this.targetEnemy = null;
+    this.hitFlash = 0;
     
     // Player control flag — when true, AI state machine is skipped
     this.isPlayerControlled = false;
     
-    // Ant-specific stats
-    this.foodDeposited = 0;       // Career total
-    this.entsKilled = 0;          // Career total
+    // Pheromone channel = own colony
+    this.pheromoneChannel = colonyId;
+    
+    // Stats
+    this.foodDeposited = 0;
+    this.entsKilled = 0;
   }
 
   /**
    * Main update tick for this ant.
-   * Called once per simulation tick.
    */
   update(world, colony, otherColony) {
     if (this.isDead) return;
 
-    // Health-based death
     if (this.health <= 0) {
       this.isDead = true;
       return;
     }
 
     this.age++;
-
-    // Decrement cooldowns
     if (this.biteCooldown > 0) this.biteCooldown--;
+    if (this.hitFlash > 0) this.hitFlash--;
 
-    // Skip AI state machine for player-controlled ant
+    // Skip AI for player-controlled ant
     if (this.isPlayerControlled) return;
 
-    // State machine
+    // Queen is stationary
+    if (this.type === 'QUEEN') return;
+
+    // --- Always check for nearby enemies first (highest priority) ---
+    const enemy = this._findNearbyEnemy(otherColony);
+    if (enemy) {
+      this._attackEnemy(enemy);
+      return;
+    }
+
+    // If we were fighting but lost target, return to appropriate state
+    if (this.state === 'FIGHTING') {
+      this.state = (this.carryingFood > 0) ? 'CARRYING' : 'WANDERING';
+    }
+
+    // --- State machine ---
     switch (this.state) {
       case 'WANDERING':
-        this._wander(world, colony, otherColony);
-        break;
       case 'FOLLOWING':
-        this._follow(world, colony, otherColony);
+        this._forage(world);
         break;
       case 'CARRYING':
-        this._carry(world, colony, otherColony);
-        break;
-      case 'FIGHTING':
-        this._fight(world, colony, otherColony);
+        this._returnHome(world, colony);
         break;
       case 'GUARDING':
-        this._guard(world, colony, otherColony);
+        this._guard();
         break;
     }
+
+    this._move();
   }
 
-  _wander(world, colony, otherColony) {
-    // Detect nearby enemies first (highest priority)
-    const enemy = this._findNearbyEnemy(world, otherColony);
-    if (enemy) {
-      this.targetEnemy = enemy;
-      this.state = 'FIGHTING';
-      return;
-    }
+  // ─── FORAGING (WANDERING + FOLLOWING) ───────────────────────────────
 
-    // Detect nearby food via direct line-of-sight
-    const food = this._findNearbyFood(world);
-    if (food) {
-      this.targetFood = food;
-      this.state = 'FOLLOWING';
-      return;
-    }
-
-    // --- Wall avoidance: sense walls ahead and steer away ---
-    const lookAhead = 4;
-    const aheadX = this.x + Math.cos(this.angle) * lookAhead;
-    const aheadY = this.y + Math.sin(this.angle) * lookAhead;
-    const margin = 3;
-    
-    if (aheadX < margin || aheadX > CONFIG.WORLD_WIDTH - margin ||
-        aheadY < margin || aheadY > CONFIG.WORLD_HEIGHT - margin) {
-      // Steer toward nest (center of activity) when near walls
-      const toNestAngle = Math.atan2(this.nestY - this.y, this.nestX - this.x);
-      this.angle = this._lerpAngle(this.angle, toNestAngle, 0.3);
-      this.angle += (Math.random() - 0.5) * 0.4;
-    }
-
-    // --- Homing instinct: ants that wander too far bias back toward nest ---
-    const distToNest = Math.hypot(this.x - this.nestX, this.y - this.nestY);
-    const maxWanderDist = 35; // Max distance from nest before homesickness kicks in
-    
-    if (distToNest > maxWanderDist) {
-      // Strong pull back toward nest
-      const toNestAngle = Math.atan2(this.nestY - this.y, this.nestX - this.x);
-      const pullStrength = Math.min(0.5, (distToNest - maxWanderDist) / 20);
-      this.angle = this._lerpAngle(this.angle, toNestAngle, pullStrength);
-    } else if (distToNest > maxWanderDist * 0.7) {
-      // Mild bias toward nest at moderate distance
-      if (Math.random() < 0.08) {
-        const toNestAngle = Math.atan2(this.nestY - this.y, this.nestX - this.x);
-        this.angle = this._lerpAngle(this.angle, toNestAngle, 0.15);
+  _forage(world) {
+    // Check if standing on food — pick it up
+    const foodHere = this._checkFoodAtFeet(world);
+    if (foodHere) {
+      const taken = Math.min(CONFIG.FOOD_CARRY_CAPACITY, foodHere.amount);
+      if (taken > 0) {
+        foodHere.amount -= taken;
+        this.carryingFood = taken;
+        this.state = 'CARRYING';
+        // U-turn to head home with slight randomness
+        this.angle += Math.PI + (Math.random() - 0.5) * 0.4;
+        return;
       }
     }
 
     // --- Pheromone-guided steering (3-sensor antenna model) ---
-    const sensorDist = CONFIG.PHEROMONE_SENSOR_RANGE;
-    const sensorSpread = CONFIG.PHEROMONE_SENSOR_SPREAD;
+    const steer = this._pheromoneSteer(world);
     
-    const leftAngle = this.angle + sensorSpread;
-    const rightAngle = this.angle - sensorSpread;
-    
-    const leftVal = world.readPheromone(
-      this.x + Math.cos(leftAngle) * sensorDist,
-      this.y + Math.sin(leftAngle) * sensorDist,
-      this.pheromoneChannel
-    );
-    const centerVal = world.readPheromone(
-      this.x + Math.cos(this.angle) * sensorDist,
-      this.y + Math.sin(this.angle) * sensorDist,
-      this.pheromoneChannel
-    );
-    const rightVal = world.readPheromone(
-      this.x + Math.cos(rightAngle) * sensorDist,
-      this.y + Math.sin(rightAngle) * sensorDist,
-      this.pheromoneChannel
-    );
-    
-    const maxVal = Math.max(leftVal, centerVal, rightVal);
-    
-    if (maxVal > 5) {
-      // Follow pheromone trail
-      if (leftVal > centerVal && leftVal > rightVal) {
-        this.angle += CONFIG.ANT_ROTATION_SPEED;
-      } else if (rightVal > centerVal && rightVal > leftVal) {
-        this.angle -= CONFIG.ANT_ROTATION_SPEED;
-      }
+    if (steer !== null && Math.random() > CONFIG.ANT_WANDER_PROBABILITY) {
+      // Follow the pheromone trail
+      this.angle += steer * CONFIG.ANT_TURN_MAX;
+      this.state = 'FOLLOWING';
     } else {
-      // No pheromone — random walk with moderate turns
-      if (Math.random() < 0.15) {
-        this.angle += (Math.random() - 0.5) * CONFIG.ANT_WANDER_ANGLE_CHANGE * 2;
-      }
-    }
-
-    // Move forward
-    this._move();
-
-    // Deposit exploratory pheromone
-    if (Math.random() < 0.03) {
-      world.depositPheromone(this.x, this.y, this.pheromoneChannel, 10);
-    }
-  }
-
-  _follow(world, colony, otherColony) {
-    if (!this.targetFood || this.targetFood.amount <= 0) {
+      // Random walk — gentle wandering
+      this.angle += (Math.random() - 0.5) * CONFIG.ANT_WANDER_ANGLE_CHANGE * 2.2;
       this.state = 'WANDERING';
-      this.targetFood = null;
-      return;
-    }
-
-    const dist = Math.hypot(this.x - this.targetFood.x, this.y - this.targetFood.y);
-
-    if (dist < 1.5) {
-      // Reached food
-      const foodTaken = Math.min(CONFIG.FOOD_CARRY_CAPACITY, this.targetFood.amount);
-      this.targetFood.amount -= foodTaken;
-      this.carryingFood = foodTaken;
-      this.state = 'CARRYING';
-      return;
-    }
-
-    // Move toward food
-    const dx = this.targetFood.x - this.x;
-    const dy = this.targetFood.y - this.y;
-    this.angle = Math.atan2(dy, dx);
-    this._move();
-
-    // Deposit pheromone trail
-    if (this.age % CONFIG.PHEROMONE_DEPOSIT_RATE === 0) {
-      world.depositPheromone(this.x, this.y, this.pheromoneChannel, CONFIG.PHEROMONE_STRENGTH_FOOD);
     }
   }
 
-  _carry(world, colony, otherColony) {
-    const nestX = colony.nestX;
-    const nestY = colony.nestY;
-    const dist = Math.hypot(this.x - nestX, this.y - nestY);
+  // ─── RETURNING HOME WITH FOOD ───────────────────────────────────────
 
-    if (dist < CONFIG.NEST_RADIUS) {
-      // Deposited food at nest
+  _returnHome(world, colony) {
+    // Deposit pheromone trail while carrying food home
+    // This trail leads FROM food TO nest — other ants follow it to find food
+    world.depositPheromone(this.x, this.y, this.pheromoneChannel, CONFIG.PHEROMONE_STRENGTH_HOME);
+
+    // Check if we reached the nest
+    const distToNest = Math.hypot(this.x - this.nestX, this.y - this.nestY);
+    if (distToNest < CONFIG.NEST_RADIUS) {
+      // Deposit food
       colony.foodAmount += this.carryingFood;
       this.carryingFood = 0;
       this.foodDeposited++;
       
-      // Small chance to wander after deposit, or check for more food
-      this.state = Math.random() < 0.7 ? 'WANDERING' : 'FOLLOWING';
-      this.targetFood = null;
+      // U-turn away from nest to go forage again
+      this.state = 'WANDERING';
+      this.angle += Math.PI + (Math.random() - 0.5) * 0.6;
       return;
     }
 
-    // Move toward nest
-    const dx = nestX - this.x;
-    const dy = nestY - this.y;
-    this.angle = Math.atan2(dy, dx);
-    this._move();
-
-    // Deposit strong home pheromone
-    if (this.age % Math.max(1, Math.floor(CONFIG.PHEROMONE_DEPOSIT_RATE * 0.7)) === 0) {
-      world.depositPheromone(this.x, this.y, this.pheromoneChannel, CONFIG.PHEROMONE_STRENGTH_HOME);
-    }
+    // Steer toward home nest with slight randomness
+    const dx = this.nestX - this.x;
+    const dy = this.nestY - this.y;
+    const homeAngle = Math.atan2(dy, dx);
+    this.angle = homeAngle + (Math.random() - 0.5) * 0.35;
   }
 
-  _fight(world, colony, otherColony) {
-    if (!this.targetEnemy || this.targetEnemy.isDead) {
-      this.targetEnemy = null;
-      this.state = 'WANDERING';
+  // ─── COMBAT ─────────────────────────────────────────────────────────
+
+  _attackEnemy(enemy) {
+    this.state = 'FIGHTING';
+    
+    // Face enemy
+    const dx = enemy.x - this.x;
+    const dy = enemy.y - this.y;
+    this.angle = Math.atan2(dy, dx);
+    const dist = Math.sqrt(dx * dx + dy * dy);
+
+    if (dist > CONFIG.BITE_RANGE) {
+      // Move toward enemy (we'll move in the main _move call)
       return;
     }
-
-    const dist = Math.hypot(this.x - this.targetEnemy.x, this.y - this.targetEnemy.y);
-
-    if (dist < CONFIG.BITE_RANGE && this.biteCooldown === 0) {
-      // Bite!
+    
+    if (this.biteCooldown <= 0) {
       const damage = this.type === 'SOLDIER' ? CONFIG.SOLDIER_DAMAGE : CONFIG.WORKER_DAMAGE;
-      this.targetEnemy.health -= damage;
+      enemy.health -= damage;
+      enemy.hitFlash = 10;
       this.biteCooldown = CONFIG.BITE_COOLDOWN;
       
-      if (this.targetEnemy.isDead) {
+      if (enemy.health <= 0) {
+        enemy.isDead = true;
         this.entsKilled++;
-        this.state = 'WANDERING';
       }
-      return;
-    }
-
-    // Move toward enemy
-    const dx = this.targetEnemy.x - this.x;
-    const dy = this.targetEnemy.y - this.y;
-    this.angle = Math.atan2(dy, dx);
-    this._move();
-  }
-
-  _guard(world, colony, otherColony) {
-    // Stationary near nest, watching for enemies
-    const enemy = this._findNearbyEnemy(world, otherColony);
-    if (enemy) {
-      this.targetEnemy = enemy;
-      this.state = 'FIGHTING';
-      return;
-    }
-
-    // Random patrol around nest
-    if (Math.random() < 0.05) {
-      this.angle += (Math.random() - 0.5) * 0.3;
-      this._move();
     }
   }
+
+  // ─── GUARDING (soldiers near nest) ──────────────────────────────────
+
+  _guard() {
+    // Patrol randomly around nest area
+    this.angle += (Math.random() - 0.5) * 0.7;
+    
+    // Drift back toward nest if too far
+    const distToNest = Math.hypot(this.x - this.nestX, this.y - this.nestY);
+    if (distToNest > CONFIG.NEST_RADIUS * 3) {
+      const homeAngle = Math.atan2(this.nestY - this.y, this.nestX - this.x);
+      this.angle = this._lerpAngle(this.angle, homeAngle, 0.3);
+    }
+  }
+
+  // ─── MOVEMENT ───────────────────────────────────────────────────────
 
   _move() {
-    // Pre-emptive wall avoidance: if next position would be out of bounds,
-    // turn away from the wall instead of moving into it
-    const margin = 2;
-    let newX = this.x + Math.cos(this.angle) * CONFIG.ANT_SPEED;
-    let newY = this.y + Math.sin(this.angle) * CONFIG.ANT_SPEED;
-    
-    if (newX < margin || newX > CONFIG.WORLD_WIDTH - margin ||
-        newY < margin || newY > CONFIG.WORLD_HEIGHT - margin) {
-      // Turn toward center of the world
-      const centerX = CONFIG.WORLD_WIDTH / 2;
-      const centerY = CONFIG.WORLD_HEIGHT / 2;
-      const toCenterAngle = Math.atan2(centerY - this.y, centerX - this.x);
-      this.angle = this._lerpAngle(this.angle, toCenterAngle, 0.5);
-      this.angle += (Math.random() - 0.5) * 0.6;
-      
-      // Recalculate movement with new angle
-      newX = this.x + Math.cos(this.angle) * CONFIG.ANT_SPEED;
-      newY = this.y + Math.sin(this.angle) * CONFIG.ANT_SPEED;
-    }
-    
-    this.x = newX;
-    this.y = newY;
+    const spd = this.isPlayerControlled ? CONFIG.ANT_SPEED * 1.5 : CONFIG.ANT_SPEED;
+    let nx = this.x + Math.cos(this.angle) * spd;
+    let ny = this.y + Math.sin(this.angle) * spd;
 
-    // Hard clamp as safety net
-    this.x = Math.max(1, Math.min(CONFIG.WORLD_WIDTH - 2, this.x));
-    this.y = Math.max(1, Math.min(CONFIG.WORLD_HEIGHT - 2, this.y));
+    // Bounce off borders (like Ant Simulator)
+    if (nx < 1 || nx >= CONFIG.WORLD_WIDTH - 1) {
+      this.angle = Math.PI - this.angle;
+      nx = Math.max(1, Math.min(CONFIG.WORLD_WIDTH - 2, nx));
+    }
+    if (ny < 1 || ny >= CONFIG.WORLD_HEIGHT - 1) {
+      this.angle = -this.angle;
+      ny = Math.max(1, Math.min(CONFIG.WORLD_HEIGHT - 2, ny));
+    }
+
+    this.x = nx;
+    this.y = ny;
+  }
+
+  // ─── SENSORS ────────────────────────────────────────────────────────
+
+  /**
+   * 3-sensor pheromone steering (left / forward / right probes).
+   * Returns a steer value in [-1, 0, +1] or null if no signal.
+   */
+  _pheromoneSteer(world) {
+    const dist = CONFIG.PHEROMONE_SENSOR_RANGE;
+    const ang = CONFIG.PHEROMONE_SENSOR_SPREAD;
+
+    const L = world.readPheromone(
+      this.x + Math.cos(this.angle - ang) * dist,
+      this.y + Math.sin(this.angle - ang) * dist,
+      this.pheromoneChannel
+    );
+    const F = world.readPheromone(
+      this.x + Math.cos(this.angle) * dist,
+      this.y + Math.sin(this.angle) * dist,
+      this.pheromoneChannel
+    );
+    const R = world.readPheromone(
+      this.x + Math.cos(this.angle + ang) * dist,
+      this.y + Math.sin(this.angle + ang) * dist,
+      this.pheromoneChannel
+    );
+
+    if (L === 0 && F === 0 && R === 0) return null;
+    if (L > F && L > R) return -1;
+    if (R > F && R > L) return  1;
+    return 0;
+  }
+
+  /**
+   * Check if there's food directly at the ant's feet (within ~1 cell).
+   */
+  _checkFoodAtFeet(world) {
+    let closest = null;
+    let closestDist = 1.5; // must be standing right on top of food
+    
+    for (const food of world.foodPatches) {
+      if (food.amount <= 0) continue;
+      const dist = Math.hypot(this.x - food.x, this.y - food.y);
+      if (dist < closestDist) {
+        closestDist = dist;
+        closest = food;
+      }
+    }
+    return closest;
+  }
+
+  _findNearbyEnemy(otherColony) {
+    const detectRange = CONFIG.FOOD_SEARCH_RANGE; // reuse as enemy detect range
+    let closest = null;
+    let closestDist = detectRange;
+
+    for (const ant of otherColony.ants) {
+      if (ant.isDead) continue;
+      const dist = Math.hypot(this.x - ant.x, this.y - ant.y);
+      if (dist < closestDist) {
+        closestDist = dist;
+        closest = ant;
+      }
+    }
+    return closest;
   }
 
   /**
@@ -324,42 +295,9 @@ export class Ant {
    */
   _lerpAngle(from, to, t) {
     let diff = to - from;
-    // Normalize to [-PI, PI]
     while (diff > Math.PI) diff -= Math.PI * 2;
     while (diff < -Math.PI) diff += Math.PI * 2;
     return from + diff * t;
-  }
-
-  _findNearbyFood(world) {
-    let closestFood = null;
-    let closestDist = CONFIG.FOOD_SEARCH_RANGE;
-
-    for (const food of world.foodPatches) {
-      if (food.amount <= 0) continue;
-      const dist = Math.hypot(this.x - food.x, this.y - food.y);
-      if (dist < closestDist) {
-        closestDist = dist;
-        closestFood = food;
-      }
-    }
-
-    return closestFood;
-  }
-
-  _findNearbyEnemy(world, otherColony) {
-    let closestEnemy = null;
-    let closestDist = 5;
-
-    for (const ant of otherColony.ants) {
-      if (ant.isDead) continue;
-      const dist = Math.hypot(this.x - ant.x, this.y - ant.y);
-      if (dist < closestDist) {
-        closestDist = dist;
-        closestEnemy = ant;
-      }
-    }
-
-    return closestEnemy;
   }
 }
 
