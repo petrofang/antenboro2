@@ -42,6 +42,12 @@ export class SceneManager {
     this.terrain = null;
     this.worldObjects = [];
     
+    // Food meshes (index → mesh)
+    this.foodMeshes = [];
+    
+    // Nest meshes
+    this.nestMeshes = [];
+    
     // Ant meshes
     this.antMeshes = new Map(); // id → mesh
     this.antBodies = new Map();  // id → { body, legs, mandibles }
@@ -133,22 +139,134 @@ export class SceneManager {
   }
   
   /**
-   * Create a debug test cube to verify rendering works.
+   * Create 3D representations of food patches from the simulation.
    */
-  createTestCube() {
-    const geometry = new THREE.BoxGeometry(2, 2, 2);
+  createFoodMeshes(foodPatches) {
+    // Remove old food meshes
+    for (const m of this.foodMeshes) {
+      this.scene.remove(m);
+    }
+    this.foodMeshes = [];
+    
+    const geometry = new THREE.SphereGeometry(0.3, 8, 6);
     const material = new THREE.MeshStandardMaterial({
-      color: 0xff6600,
-      roughness: 0.5,
-      metalness: 0.1,
+      color: 0xffcc00,
+      roughness: 0.6,
+      metalness: 0.0,
+      emissive: 0x664400,
+      emissiveIntensity: 0.3,
     });
-    const cube = new THREE.Mesh(geometry, material);
-    cube.position.set(0, 3, 0);
-    cube.castShadow = true;
-    cube.receiveShadow = true;
-    this.scene.add(cube);
-    console.log('✓ Test cube created at (0, 3, 0)');
-    return cube;
+    
+    for (let i = 0; i < foodPatches.length; i++) {
+      const food = foodPatches[i];
+      const group = new THREE.Group();
+      
+      // Create a cluster of small spheres to represent food pile
+      const count = Math.min(Math.ceil(food.amount / 5), 8);
+      for (let j = 0; j < count; j++) {
+        const sphere = new THREE.Mesh(geometry, material);
+        const angle = (j / count) * Math.PI * 2;
+        const dist = 0.3 + Math.random() * 0.3;
+        sphere.position.set(
+          Math.cos(angle) * dist,
+          0.15 + Math.random() * 0.2,
+          Math.sin(angle) * dist
+        );
+        sphere.scale.setScalar(0.5 + Math.random() * 0.5);
+        sphere.castShadow = true;
+        group.add(sphere);
+      }
+      
+      const worldX = (food.x - CONFIG.WORLD_WIDTH / 2) * CONFIG.CELL_SIZE;
+      const worldZ = (food.y - CONFIG.WORLD_HEIGHT / 2) * CONFIG.CELL_SIZE;
+      group.position.set(worldX, 0, worldZ);
+      
+      this.scene.add(group);
+      this.foodMeshes.push(group);
+    }
+    
+    console.log('✓ Food meshes created: ' + foodPatches.length + ' patches');
+  }
+
+  /**
+   * Update food mesh visibility based on remaining amount.
+   */
+  updateFoodMeshes(foodPatches) {
+    for (let i = 0; i < foodPatches.length && i < this.foodMeshes.length; i++) {
+      const food = foodPatches[i];
+      const mesh = this.foodMeshes[i];
+      
+      if (food.amount <= 0) {
+        mesh.visible = false;
+      } else {
+        mesh.visible = true;
+        // Scale based on remaining food
+        const scale = Math.max(0.2, food.amount / CONFIG.FOOD_PER_CLUSTER);
+        mesh.scale.setScalar(scale);
+      }
+    }
+  }
+
+  /**
+   * Create 3D nest markers for both colonies.
+   */
+  createNestMeshes() {
+    // Player nest (green mound)
+    const playerNest = this._createNestMesh(0x00cc44, 0x004411);
+    const pnx = (CONFIG.PLAYER_COLONY_NEST_X - CONFIG.WORLD_WIDTH / 2) * CONFIG.CELL_SIZE;
+    const pnz = (CONFIG.PLAYER_COLONY_NEST_Y - CONFIG.WORLD_HEIGHT / 2) * CONFIG.CELL_SIZE;
+    playerNest.position.set(pnx, 0, pnz);
+    this.scene.add(playerNest);
+    this.nestMeshes.push(playerNest);
+    
+    // Enemy nest (red mound)
+    const enemyNest = this._createNestMesh(0xcc3333, 0x441111);
+    const enx = (CONFIG.ENEMY_COLONY_NEST_X - CONFIG.WORLD_WIDTH / 2) * CONFIG.CELL_SIZE;
+    const enz = (CONFIG.ENEMY_COLONY_NEST_Y - CONFIG.WORLD_HEIGHT / 2) * CONFIG.CELL_SIZE;
+    enemyNest.position.set(enx, 0, enz);
+    this.scene.add(enemyNest);
+    this.nestMeshes.push(enemyNest);
+    
+    console.log('✓ Nest meshes created');
+  }
+  
+  _createNestMesh(color, emissive) {
+    const group = new THREE.Group();
+    
+    // Main mound
+    const moundGeo = new THREE.SphereGeometry(1.5, 16, 12, 0, Math.PI * 2, 0, Math.PI / 2);
+    const moundMat = new THREE.MeshStandardMaterial({
+      color: color,
+      roughness: 0.9,
+      metalness: 0.0,
+      emissive: emissive,
+      emissiveIntensity: 0.4,
+    });
+    const mound = new THREE.Mesh(moundGeo, moundMat);
+    mound.castShadow = true;
+    mound.receiveShadow = true;
+    group.add(mound);
+    
+    // Entrance hole (dark disc)
+    const holeGeo = new THREE.CircleGeometry(0.4, 12);
+    const holeMat = new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 1.0 });
+    const hole = new THREE.Mesh(holeGeo, holeMat);
+    hole.rotation.x = -Math.PI / 2;
+    hole.position.set(0.5, 0.05, 0.5);
+    group.add(hole);
+    
+    // Small surrounding dirt piles
+    const dirtGeo = new THREE.SphereGeometry(0.5, 8, 6, 0, Math.PI * 2, 0, Math.PI / 2);
+    for (let i = 0; i < 4; i++) {
+      const dirt = new THREE.Mesh(dirtGeo, moundMat);
+      const a = (i / 4) * Math.PI * 2 + Math.random() * 0.5;
+      dirt.position.set(Math.cos(a) * 2, 0, Math.sin(a) * 2);
+      dirt.scale.setScalar(0.5 + Math.random() * 0.5);
+      dirt.castShadow = true;
+      group.add(dirt);
+    }
+    
+    return group;
   }
 
   /**

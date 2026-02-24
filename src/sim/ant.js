@@ -228,12 +228,31 @@ export class Ant {
   }
 
   _move() {
+    const newX = this.x + Math.cos(this.angle) * CONFIG.ANT_SPEED;
+    const newY = this.y + Math.sin(this.angle) * CONFIG.ANT_SPEED;
+
+    // Bounce off world borders by reversing the relevant angle component
+    let hitWall = false;
+    if (newX <= 0 || newX >= CONFIG.WORLD_WIDTH - 1) {
+      this.angle = Math.PI - this.angle; // Reflect horizontally
+      hitWall = true;
+    }
+    if (newY <= 0 || newY >= CONFIG.WORLD_HEIGHT - 1) {
+      this.angle = -this.angle; // Reflect vertically
+      hitWall = true;
+    }
+
+    if (hitWall) {
+      // Add some randomness so they don't just ping-pong
+      this.angle += (Math.random() - 0.5) * 0.5;
+    }
+
     this.x += Math.cos(this.angle) * CONFIG.ANT_SPEED;
     this.y += Math.sin(this.angle) * CONFIG.ANT_SPEED;
 
-    // Clamp to world bounds
-    this.x = Math.max(0, Math.min(CONFIG.WORLD_WIDTH - 1, this.x));
-    this.y = Math.max(0, Math.min(CONFIG.WORLD_HEIGHT - 1, this.y));
+    // Clamp to world bounds (safety net)
+    this.x = Math.max(1, Math.min(CONFIG.WORLD_WIDTH - 2, this.x));
+    this.y = Math.max(1, Math.min(CONFIG.WORLD_HEIGHT - 2, this.y));
   }
 
   _findNearbyFood(world) {

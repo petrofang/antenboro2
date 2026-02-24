@@ -41,10 +41,11 @@ class AntenbOro {
       this.deltaTime = 1 / CONFIG.TICKS_PER_SECOND;
       this.lastFrameTime = performance.now();
       
-      // Initialize world
+      // Initialize world visuals
       updateStatus('Building world...');
       this.sceneManager.createTerrain();
-      this.sceneManager.createTestCube();
+      this.sceneManager.createNestMeshes();
+      this.sceneManager.createFoodMeshes(this.simulation.world.foodPatches);
       this._syncAntMeshes();
       
       // Start game loop
@@ -92,6 +93,9 @@ class AntenbOro {
       
       // Sync all ant meshes to simulation state
       this._updateAntMeshes();
+      
+      // Update food visuals
+      this.sceneManager.updateFoodMeshes(this.simulation.world.foodPatches);
       
       // Update camera
       this.playerController.updateCamera(this.sceneManager.camera);
@@ -211,7 +215,14 @@ class UIManager {
     this.minimapCtx.fillStyle = '#00ff00';
     for (const ant of this.simulation.playerColony.ants) {
       if (!ant.isDead) {
-        this.minimapCtx.fillRect(ant.x * scaleX - 1, ant.y * scaleY - 1, 2, 2);
+        if (ant.isPlayerControlled) {
+          // Hero ant - draw larger and brighter
+          this.minimapCtx.fillStyle = '#00ffff';
+          this.minimapCtx.fillRect(ant.x * scaleX - 3, ant.y * scaleY - 3, 6, 6);
+          this.minimapCtx.fillStyle = '#00ff00';
+        } else {
+          this.minimapCtx.fillRect(ant.x * scaleX - 1, ant.y * scaleY - 1, 2, 2);
+        }
       }
     }
     

@@ -165,9 +165,17 @@ export class PlayerController {
     const canvas = this.sceneManager.canvas;
     
     if (this.isFPSMode) {
+      // Re-enable player control, lock pointer
+      this.ant.isPlayerControlled = true;
       canvas.requestPointerLock();
     } else {
+      // Release pointer for overhead strategy view
       if (this.pointerLocked) document.exitPointerLock();
+      // Center overhead camera on hero ant's current position
+      const worldX = (this.ant.x - CONFIG.WORLD_WIDTH / 2) * CONFIG.CELL_SIZE;
+      const worldZ = (this.ant.y - CONFIG.WORLD_HEIGHT / 2) * CONFIG.CELL_SIZE;
+      this.overheadX = worldX;
+      this.overheadZ = worldZ;
     }
     
     console.log(this.isFPSMode ? 'FPS Mode' : 'Overhead Mode');
@@ -326,7 +334,8 @@ export class PlayerController {
   }
 
   /**
-   * Overhead mode: WASD pans the camera, ant is AI-controlled.
+   * Overhead mode: WASD pans the camera. Arrow keys control sim speed.
+   * This is the "Ant Simulator" view — a proper top-down strategy view.
    */
   _updateOverheadMovement() {
     const panSpeed = 0.5;
@@ -334,6 +343,11 @@ export class PlayerController {
     if (this.keys['s']) this.overheadZ += panSpeed;
     if (this.keys['a']) this.overheadX -= panSpeed;
     if (this.keys['d']) this.overheadX += panSpeed;
+    
+    // Clamp overhead pan to world bounds
+    const halfWorld = CONFIG.WORLD_SIZE_3D / 2;
+    this.overheadX = Math.max(-halfWorld, Math.min(halfWorld, this.overheadX));
+    this.overheadZ = Math.max(-halfWorld, Math.min(halfWorld, this.overheadZ));
   }
 
   /**
@@ -349,14 +363,27 @@ export class PlayerController {
       camera.position.set(worldX, 0.5, worldZ);
       
       // Build look direction from yaw & pitch using Euler
-      // Reset rotation and apply yaw (Y axis) then pitch (X axis)
       camera.rotation.order = 'YXZ';
       camera.rotation.set(this.pitch, this.yaw, 0);
+      
+      // Update FOV for ant-level perspective
+      if (camera.fov !== CONFIG.PLAYER_FOV) {
+        camera.fov = CONFIG.PLAYER_FOV;
+        camera.updateProjectionMatrix();
+      }
     } else {
-      // Overhead strategic view
-      camera.position.set(this.overheadX, 40, this.overheadZ);
+      // Overhead strategic view — "Ant Simulator" top-down
+      // Camera looks straight down, high enough to see a good chunk of the world
+      camera.position.set(this.overheadX, 45, this.overheadZ + 15);
       camera.rotation.order = 'YXZ';
-      camera.rotation.set(-Math.PI / 2, 0, 0);
+      // Slight angle (not fully 90°) so you can see the 3D-ness of ants and nests
+      camera.rotation.set(-Math.PI / 2.3, 0, 0);
+      
+      // Wider FOV for overhead
+      if (camera.fov !== 60) {
+        camera.fov = 60;
+        camera.updateProjectionMatrix();
+      }
     }
   }
 }
