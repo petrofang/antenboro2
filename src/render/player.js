@@ -118,12 +118,6 @@ export class PlayerController {
           e.preventDefault();
           this.toggleCameraMode();
           break;
-        case 'f':
-          this._pickupFood();
-          break;
-        case 'e':
-          this._depositFood();
-          break;
         case 'q':
           this._rallyPheromone();
           break;
@@ -171,38 +165,11 @@ export class PlayerController {
     } else {
       // Release pointer for overhead strategy view
       if (this.pointerLocked) document.exitPointerLock();
-      // Center overhead camera on hero ant's current position
-      const worldX = (this.ant.x - CONFIG.WORLD_WIDTH / 2) * CONFIG.CELL_SIZE;
-      const worldZ = (this.ant.y - CONFIG.WORLD_HEIGHT / 2) * CONFIG.CELL_SIZE;
-      this.overheadX = worldX;
-      this.overheadZ = worldZ;
+      // Ant stays player-controlled in overhead too
+      this.ant.isPlayerControlled = true;
     }
     
     console.log(this.isFPSMode ? 'FPS Mode' : 'Overhead Mode');
-  }
-
-  _pickupFood() {
-    const nearby = this.simulation.world.foodPatches.find(
-      food => Math.hypot(this.ant.x - food.x, this.ant.y - food.y) < 1.5
-    );
-    
-    if (nearby && nearby.amount > 0) {
-      const foodTaken = Math.min(CONFIG.FOOD_CARRY_CAPACITY, nearby.amount);
-      nearby.amount -= foodTaken;
-      this.ant.carryingFood = foodTaken;
-      this.ant.state = 'CARRYING';
-      console.log('Picked up food!');
-    }
-  }
-
-  _depositFood() {
-    const nestDist = Math.hypot(this.ant.x - this.colony.nestX, this.ant.y - this.colony.nestY);
-    if (nestDist < CONFIG.NEST_RADIUS && this.ant.carryingFood > 0) {
-      this.colony.foodAmount += this.ant.carryingFood;
-      this.ant.carryingFood = 0;
-      this.ant.state = 'WANDERING';
-      console.log('Deposited food at nest!');
-    }
   }
 
   _rallyPheromone() {
@@ -331,23 +298,99 @@ export class PlayerController {
     
     // Always sync ant facing to camera yaw (body faces where we look)
     this.ant.angle = Math.atan2(fwdGridY, fwdGridX);
+
+    // Auto-behaviors work in FPS mode too
+    this._autoPickupFood();
+    this._autoDepositFood();
   }
 
   /**
-   * Overhead mode: WASD pans the camera. Arrow keys control sim speed.
-   * This is the "Ant Simulator" view — a proper top-down 2D strategy view.
+   * Overhead mode: WASD moves the hero ant (like Ant Simulator).
+   * Camera follows the ant. Arrow keys control sim speed.
+   * Auto-behaviors: pick up food on contact, deposit at nest, pheromone trail.
    */
   _updateOverheadMovement() {
-    const panSpeed = 2.0; // faster pan for bigger world
-    if (this.keys['w']) this.overheadZ -= panSpeed;
-    if (this.keys['s']) this.overheadZ += panSpeed;
-    if (this.keys['a']) this.overheadX -= panSpeed;
-    if (this.keys['d']) this.overheadX += panSpeed;
-    
-    // Clamp overhead pan to world bounds
-    const halfWorld = CONFIG.WORLD_SIZE_3D / 2;
-    this.overheadX = Math.max(-halfWorld, Math.min(halfWorld, this.overheadX));
-    this.overheadZ = Math.max(-halfWorld, Math.min(halfWorld, this.overheadZ));
+    // --- WASD moves the ant in cardinal directions (top-down) ---
+    // W = up (negative grid Y), S = down, A = left (negative grid X), D = right
+    const speed = CONFIG.ANT_SPEED * 1.5; // slightly faster for player
+    let dx = 0;
+    let dy = 0;
+
+    if (this.keys['w']) dy -= speed;
+    if (this.keys['s']) dy += speed;
+    if (this.keys['a']) dx -= speed;
+    if (this.keys['d']) dx += speed;
+
+    // Normalize diagonal movement
+    if (dx !== 0 && dy !== 0) {
+      const mag = Math.sqrt(dx * dx + dy * dy);
+      dx = (dx / mag) * speed;
+      dy = (dy / mag) * speed;
+    }
+
+    if (dx !== 0 || dy !== 0) {
+      this.ant.x += dx;
+      this.ant.y += dy;
+
+      // Face movement direction
+      this.ant.angle = Math.atan2(dy, dx);
+
+      // Clamp to world bounds
+      this.ant.x = Math.max(1, Math.min(CONFIG.WORLD_WIDTH - 2, this.ant.x));
+      this.ant.y = Math.max(1, Math.min(CONFIG.WORLD_HEIGHT - 2, this.ant.y));
+    }
+
+    // --- Auto-behaviors (like Ant Simulator) ---
+    this._autoPickupFood();
+    this._autoDepositFood();
+    this._autoCarryPheromone();
+  }
+
+  /**
+   * Auto-pick up food when the hero ant walks over it.
+   */
+  _autoPickupFood() {
+    if (this.ant.carryingFood > 0) return; // already carrying
+
+    const nearby = this.simulation.world.foodPatches.find(
+      food => food.amount > 0 && Math.hypot(this.ant.x - food.x, this.ant.y - food.y) < 1.5
+    );
+
+    if (nearby) {
+      const taken = Math.min(CONFIG.FOOD_CARRY_CAPACITY, nearby.amount);
+      nearby.amount -= taken;
+      this.ant.carryingFood = taken;
+      this.ant.state = 'CARRYING';
+      console.log('Auto-picked up food!');
+    }
+  }
+
+  /**
+   * Auto-deposit food when hero ant reaches the nest.
+   */
+  _autoDepositFood() {
+    if (this.ant.carryingFood <= 0) return;
+
+    const distToNest = Math.hypot(this.ant.x - this.colony.nestX, this.ant.y - this.colony.nestY);
+    if (distToNest < CONFIG.NEST_RADIUS) {
+      this.colony.foodAmount += this.ant.carryingFood;
+      this.ant.foodDeposited++;
+      this.ant.carryingFood = 0;
+      this.ant.state = 'WANDERING';
+      console.log('Auto-deposited food at nest!');
+    }
+  }
+
+  /**
+   * Deposit pheromone trail while carrying food (guides allies to food source).
+   */
+  _autoCarryPheromone() {
+    if (this.ant.carryingFood > 0) {
+      this.simulation.world.depositPheromone(
+        this.ant.x, this.ant.y, 0,
+        CONFIG.PHEROMONE_STRENGTH_HOME * 0.7
+      );
+    }
   }
 
   /**
@@ -373,9 +416,10 @@ export class PlayerController {
         camera.updateProjectionMatrix();
       }
     } else {
-      // Overhead strategic view — "Ant Simulator" top-down
-      // Camera looks straight down, high enough to see a good chunk of the world
-      camera.position.set(this.overheadX, 45, this.overheadZ + 15);
+      // Overhead strategic view — camera follows the hero ant
+      const worldX = (this.ant.x - CONFIG.WORLD_WIDTH / 2) * CONFIG.CELL_SIZE;
+      const worldZ = (this.ant.y - CONFIG.WORLD_HEIGHT / 2) * CONFIG.CELL_SIZE;
+      camera.position.set(worldX, 45, worldZ + 15);
       camera.rotation.order = 'YXZ';
       // Slight angle (not fully 90°) so you can see the 3D-ness of ants and nests
       camera.rotation.set(-Math.PI / 2.3, 0, 0);

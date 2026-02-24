@@ -347,11 +347,10 @@ class UIManager {
     const cw = canvas.width;
     const ch = canvas.height;
     
-    // Pan state from the player controller overhead coords
-    // Convert 3D world coords back to grid coords for pan center
+    // Pan state from the player controller — center on hero ant
     const pc = this.playerController;
-    const panCenterX = (pc.overheadX / CONFIG.CELL_SIZE) + CONFIG.WORLD_WIDTH / 2;
-    const panCenterY = (pc.overheadZ / CONFIG.CELL_SIZE) + CONFIG.WORLD_HEIGHT / 2;
+    const panCenterX = pc.ant.x;
+    const panCenterY = pc.ant.y;
     
     // Calculate visible grid area — show ~40 cells wide, proportional height
     const viewCells = 120; // grid cells visible across screen width
