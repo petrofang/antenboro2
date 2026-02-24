@@ -120,14 +120,29 @@ The underground is a **graph of nodes connected by tunnel edges**:
 - **Separate Three.js scene** for underground (not a sub-terrain layer in the main scene)
 - Player transitions between scenes via E key at nest entrance
 - Each scene has its own lighting, fog, and atmosphere
-- Bloom post-processing shared across both scenes
-- Strategy/overhead view shows underground map when player is below
+- Bloom post-processing on surface only; underground uses raw renderer for earthy feel
+- Strategy/overhead view shows surface map; disabled while underground
+
+### Surface World
+- **Ant hill mounds**: LatheGeometry smooth dirt mounds with dark entrance hole at top, colony-color ring at base, scattered dirt crumbs
+- **Terrain height integration**: `getTerrainHeight()` adds cosine-falloff mound bumps near each nest — ants walk *over* the hill, not through it
+- **Anatomically accurate ant meshes**: Formicidae morphology (head, mesosoma, petiole, gaster, compound eyes, elbowed antennae, jointed legs, mandibles)
+- **Caste differentiation**: Worker (standard), Soldier (massive head + mandibles), Queen (distended physogastric gaster)
+- **Visual effects**: Hit flash, death animation, walking leg animation, food-carrying indicator, particle bursts, bloom post-processing, 3D pheromone trail visualization
+
+### Underground World
+- **Tunnel tubes**: BackSide TubeGeometry with earthy brown walls, point lights spaced along corridors
+- **Chamber spheres**: BackSide SphereGeometry, type-specific colored lighting (gold=queen, amber=food, red=barracks)
+- **Entrance chamber**: Partial-sphere earthy walls with sky disc at top, strong daylight PointLight pouring down — reads as "hole to the outside"
+- **Tunnel-chamber joins**: Tube endpoints shortened to stop at chamber radius boundary so hollow spaces connect seamlessly
+- **Atmosphere**: HemisphereLight (cool sky / warm earth), moderate ambient, short-range warm fog
 
 ### Simulation
 - **ColonyUnderground** data structure: graph of nodes + edges per colony
-- Underground has its own pheromone layer (tunnel-constrained)
-- Ants have an `isUnderground` flag; underground ants skip surface AI
-- Queen, brood, and food stores exist in the underground data layer
+- Underground has its own coordinate space; ants transition at entrance node
+- Queen and brood (eggs/larvae/pupae) live underground; separate mesh instances in underground scene
+- 4 pheromone channels: player food, enemy food, player alarm, enemy alarm
+- Alarm pheromone: fighting ants deposit alarm, soldiers respond 90%, workers 40%
 
 ### Coordinate Systems
 - **Surface**: 400×300 grid → 240×180 3D units (existing)
@@ -138,30 +153,35 @@ The underground is a **graph of nodes connected by tunnel edges**:
 
 ## Development Phases
 
-### Phase 1: Underground Foundation ← CURRENT
-- [ ] Underground scene (lighting, ceiling, floor)
-- [ ] Starter colony layout (entrance tunnel + queen chamber)
-- [ ] E-key scene transition (enter/exit nest)
-- [ ] Queen + brood render underground
-- [ ] Camera controls underground (FPS in tunnels)
+### Phase 1: Underground Foundation ✅ COMPLETE
+- [x] Underground scene (lighting, ceiling, floor)
+- [x] Starter colony layout (entrance tunnel + queen chamber)
+- [x] E-key scene transition (enter/exit nest)
+- [x] Queen + brood render underground
+- [x] Camera controls underground (FPS in tunnels)
+- [x] Tunnel corridor point lights for visibility
+- [x] Entrance chamber sky portal (earthy walls + sky disc + daylight)
+- [x] Surface ant hill mounds (LatheGeometry + terrain height integration)
+- [x] HUD mode indicator (FPS / OVERHEAD / UNDERGROUND)
 
-### Phase 2: Tunnel Network
-- [ ] Graph data structure for underground
-- [ ] Tunnel mesh generation (TubeGeometry)
-- [ ] Chamber mesh generation (cave interiors)
-- [ ] Wall collision in tunnels
+### Phase 2: Tunnel Network — PARTIALLY COMPLETE
+- [x] Graph data structure for underground (`ColonyUnderground`)
+- [x] Tunnel mesh generation (TubeGeometry with shortened endpoints)
+- [x] Chamber mesh generation (BackSide SphereGeometry interiors)
+- [x] Wall collision in tunnels (`constrainPosition()`)
 - [ ] Worker auto-dig AI
+- [ ] Multiple tunnel junctions and branching paths
 
 ### Phase 3: Building System
 - [ ] B-key build menu UI underground
 - [ ] Chamber designation + construction
 - [ ] Chamber bonus effects
 - [ ] Food store / nursery / barracks mechanics
-- [ ] Visual identity per chamber type
+- [ ] Visual identity per chamber type (distinct props & colors)
 
 ### Phase 4: Underground Ecosystem
 - [ ] Underground pheromone trails
-- [ ] Underground strategy view
+- [ ] Underground strategy view (2D tunnel map)
 - [ ] Enemy colony underground (mirrored system)
 - [ ] Tunnel invasion mechanics
 - [ ] Barricade defense system
