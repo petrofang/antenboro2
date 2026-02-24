@@ -1,8 +1,9 @@
 import CONFIG from './config.js';
 import { Ant } from './ant.js';
+import { ColonyUnderground } from './underground.js';
 
 /**
- * Colony manager: queen, ants, food, egg-laying.
+ * Colony manager: queen, ants, food, egg-laying, underground.
  */
 export class Colony {
   constructor(id, nestX, nestY) {
@@ -21,6 +22,9 @@ export class Colony {
     this.eggLayingTimer = 0;
     this.nextAntId = 0;
     this.nextEggId = 0;
+
+    // Underground tunnel/chamber network
+    this.underground = new ColonyUnderground(id);
     
     this._initializeStartingAnts();
   }

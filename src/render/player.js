@@ -49,6 +49,12 @@ export class PlayerController {
     
     // Camera mode
     this.isFPSMode = true; // true = FPS, false = overhead
+    this.isUnderground = false; // true = underground FPS mode
+    
+    // Underground local position (relative to colony entrance node)
+    this.ugX = 0;
+    this.ugY = 0;
+    this.ugZ = 0;
     
     // Overhead camera pan
     this.overheadX = 0;
@@ -116,7 +122,10 @@ export class PlayerController {
       switch (key) {
         case 'tab':
           e.preventDefault();
-          this.toggleCameraMode();
+          if (!this.isUnderground) this.toggleCameraMode();
+          break;
+        case 'e':
+          this._tryEnterExitUnderground();
           break;
         case 'q':
           this._rallyPheromone();
@@ -218,6 +227,62 @@ export class PlayerController {
     console.log('Build menu opened (not yet implemented)');
   }
 
+  // ─── UNDERGROUND ENTRY / EXIT ────────────────────────────────────
+
+  _tryEnterExitUnderground() {
+    if (this.isUnderground) {
+      // Check if near entrance node to exit
+      const ug = this.colony.underground;
+      const entrance = ug.getEntrance();
+      if (!entrance) return;
+      const dist = Math.sqrt(
+        (this.ugX - entrance.x) ** 2 +
+        (this.ugY - entrance.y) ** 2 +
+        (this.ugZ - entrance.z) ** 2
+      );
+      if (dist < entrance.radius * 1.5) {
+        this._exitUnderground();
+      }
+    } else {
+      // Check if near nest entrance on surface to enter
+      if (!this.isFPSMode) return; // only enter from FPS mode
+      const distToNest = Math.hypot(
+        this.ant.x - this.colony.nestX,
+        this.ant.y - this.colony.nestY
+      );
+      if (distToNest < CONFIG.NEST_RADIUS) {
+        this._enterUnderground();
+      }
+    }
+  }
+
+  _enterUnderground() {
+    this.isUnderground = true;
+    this.isFPSMode = true;
+    const entrance = this.colony.underground.getEntrance();
+    this.ugX = entrance.x;
+    this.ugY = entrance.y;
+    this.ugZ = entrance.z + 0.5; // step slightly inside
+    this.yaw = Math.PI; // face into the tunnel
+    this.pitch = 0;
+    const canvas = this.sceneManager.canvas;
+    canvas.requestPointerLock();
+    console.log('🕳️ Entered underground!');
+  }
+
+  _exitUnderground() {
+    this.isUnderground = false;
+    this.isFPSMode = true;
+    // Place ant back at nest on surface
+    this.ant.x = this.colony.nestX;
+    this.ant.y = this.colony.nestY;
+    this.yaw = 0;
+    this.pitch = 0;
+    const canvas = this.sceneManager.canvas;
+    canvas.requestPointerLock();
+    console.log('☀️ Exited to surface!');
+  }
+
   /**
    * Update player ant behavior based on input.
    */
@@ -226,10 +291,45 @@ export class PlayerController {
     if (this.biteCooldown > 0) this.biteCooldown--;
     if (this.rallyCooldown > 0) this.rallyCooldown--;
     
-    if (this.isFPSMode) {
+    if (this.isUnderground) {
+      this._updateUndergroundMovement();
+    } else if (this.isFPSMode) {
       this._updateFPSMovement();
     } else {
       this._updateOverheadMovement();
+    }
+  }
+
+  /**
+   * Underground FPS movement: WASD in tunnel network, constrained to corridors.
+   */
+  _updateUndergroundMovement() {
+    // Camera forward in local underground coords
+    const fwdX = -Math.sin(this.yaw);
+    const fwdZ = -Math.cos(this.yaw);
+    const rightX = Math.cos(this.yaw);
+    const rightZ = -Math.sin(this.yaw);
+
+    // A/D turn
+    if (this.keys['a']) this.yaw += this.turnRate;
+    if (this.keys['d']) this.yaw -= this.turnRate;
+
+    let dx = 0, dz = 0;
+    const speed = CONFIG.ANT_SPEED * CONFIG.CELL_SIZE * 1.2; // 3D units, slightly faster underground
+
+    if (this.keys['w']) { dx += fwdX * speed; dz += fwdZ * speed; }
+    if (this.keys['s']) { dx -= fwdX * speed * 0.6; dz -= fwdZ * speed * 0.6; }
+    if (this.keys['a']) { dx -= rightX * speed * this.strafeFraction; dz -= rightZ * speed * this.strafeFraction; }
+    if (this.keys['d']) { dx += rightX * speed * this.strafeFraction; dz += rightZ * speed * this.strafeFraction; }
+
+    if (dx !== 0 || dz !== 0) {
+      let newX = this.ugX + dx;
+      let newZ = this.ugZ + dz;
+      // Y stays on the tunnel floor (constrain handles it)
+      const constrained = this.colony.underground.constrainPosition(newX, this.ugY, newZ);
+      this.ugX = constrained.x;
+      this.ugY = constrained.y;
+      this.ugZ = constrained.z;
     }
   }
 
@@ -402,7 +502,16 @@ export class PlayerController {
    * Update camera position/orientation.
    */
   updateCamera(camera) {
-    if (this.isFPSMode) {
+    if (this.isUnderground) {
+      // Underground FPS: camera at local underground position
+      camera.position.set(this.ugX, this.ugY + 0.3, this.ugZ);
+      camera.rotation.order = 'YXZ';
+      camera.rotation.set(this.pitch, this.yaw, 0);
+      if (camera.fov !== CONFIG.PLAYER_FOV) {
+        camera.fov = CONFIG.PLAYER_FOV;
+        camera.updateProjectionMatrix();
+      }
+    } else if (this.isFPSMode) {
       // Convert ant grid position → 3D world position
       const worldX = (this.ant.x - CONFIG.WORLD_WIDTH / 2) * CONFIG.CELL_SIZE;
       const worldZ = (this.ant.y - CONFIG.WORLD_HEIGHT / 2) * CONFIG.CELL_SIZE;

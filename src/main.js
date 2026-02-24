@@ -3,6 +3,7 @@ import CONFIG from './sim/config.js';
 import { SimulationEngine } from './sim/index.js';
 import { SceneManager } from './render/scene.js';
 import { PlayerController } from './render/player.js';
+import { UndergroundRenderer } from './render/underground.js';
 
 console.log('🚀 AntenbOro modules loaded');
 const statusEl = document.getElementById('status');
@@ -51,6 +52,18 @@ class AntenbOro {
       this.sceneManager.createPheromoneLayer();
       this._syncAntMeshes();
 
+      // Underground renderer (uses same WebGL renderer + camera)
+      updateStatus('Building underground...');
+      this.undergroundRenderer = new UndergroundRenderer(
+        this.sceneManager.renderer,
+        this.sceneManager.camera
+      );
+      // Build initial underground geometry for player colony
+      this.undergroundRenderer.rebuild(this.simulation.playerColony.underground);
+
+      // Create queen mesh in underground scene
+      this._setupUndergroundQueen();
+
       // Track previous hitFlash state for particle triggers
       this._prevHitFlash = new Map();
       // Track previous queen laying state for egg-burst particles
@@ -74,9 +87,82 @@ class AntenbOro {
     ];
 
     for (const ant of allAnts) {
+      // Skip player colony queen — she lives underground
+      if (ant.type === 'QUEEN' && ant.colonyId === 0) continue;
       const meshKey = `${ant.colonyId}_${ant.id}`;
       if (!this.sceneManager.antMeshes.has(meshKey)) {
         this.sceneManager.createAntMesh(meshKey, ant.type, ant.colonyId);
+      }
+    }
+  }
+
+  /**
+   * Create the queen ant mesh in the underground scene.
+   * The queen lives underground in her chamber.
+   */
+  _setupUndergroundQueen() {
+    const queen = this.simulation.playerColony.queen;
+    if (!queen) return;
+
+    const meshKey = `ug_queen_${queen.colonyId}`;
+    // Use the surface scene's createAntMesh to make the mesh, then move it to underground
+    this.sceneManager.createAntMesh(meshKey, 'QUEEN', queen.colonyId);
+    const queenMesh = this.sceneManager.antMeshes.get(meshKey);
+    if (queenMesh) {
+      // Reparent: remove from surface scene, add to underground scene
+      this.sceneManager.scene.remove(queenMesh);
+      this.undergroundRenderer.scene.add(queenMesh);
+      this._ugQueenMesh = queenMesh;
+      this._ugQueenKey = meshKey;
+
+      // Position queen in her chamber
+      const chamber = this.simulation.playerColony.underground.getQueenChamber();
+      if (chamber) {
+        queenMesh.position.set(chamber.x, chamber.y - chamber.radius * 0.4 + 0.15, chamber.z);
+      }
+    }
+  }
+
+  /**
+   * Update underground queen position and animation each frame.
+   */
+  _updateUndergroundQueen() {
+    if (!this._ugQueenMesh) return;
+    const queen = this.simulation.playerColony.queen;
+    if (!queen || queen.isDead) return;
+
+    const chamber = this.simulation.playerColony.underground.getQueenChamber();
+    if (!chamber) return;
+
+    // Queen wanders gently inside chamber (convert grid-space offset to local underground)
+    const offsetX = (queen.x - this.simulation.playerColony.nestX) * CONFIG.CELL_SIZE * 0.3;
+    const offsetZ = (queen.y - this.simulation.playerColony.nestY) * CONFIG.CELL_SIZE * 0.3;
+
+    const floorY = chamber.y - chamber.radius * 0.4 + 0.15;
+    this._ugQueenMesh.position.set(
+      chamber.x + offsetX,
+      floorY,
+      chamber.z + offsetZ
+    );
+    this._ugQueenMesh.rotation.y = Math.PI / 2 - queen.angle;
+
+    // Update queen laying animation on mesh userData
+    this._ugQueenMesh.userData.isLayingEgg = queen.isLayingEgg;
+
+    // Update queen body animation (gaster pulse / laying contraction)
+    const bodies = this.sceneManager.antBodies.get(this._ugQueenKey);
+    if (bodies && bodies.gaster) {
+      const U = 1.4;
+      const gW = 0.20 * U, gH = 0.17 * U, gD = 0.35 * U;
+      const laying = queen.isLayingEgg || 0;
+      if (laying > 0) {
+        const progress = 1.0 - (laying / 20);
+        const squeeze = 1.0 - Math.sin(progress * Math.PI) * 0.25;
+        bodies.gaster.scale.set(gW * squeeze * 1.1, gH * squeeze, gD * (1.0 + progress * 0.15));
+      } else {
+        const t = performance.now() * 0.003;
+        const pulse = 1.0 + Math.sin(t) * 0.08;
+        bodies.gaster.scale.set(gW * pulse, gH * pulse, gD * pulse);
       }
     }
   }
@@ -106,6 +192,9 @@ class AntenbOro {
       // Sync egg visuals with colonies
       this._updateEggMeshes();
       
+      // Update underground queen mesh
+      this._updateUndergroundQueen();
+
       // Update death animations
       this.sceneManager.updateDyingAnts();
 
@@ -129,8 +218,12 @@ class AntenbOro {
       // Update UI
       this.uiManager.update();
       
-      // Render
-      this.sceneManager.render();
+      // Render — swap scene based on underground state
+      if (this.playerController.isUnderground) {
+        this.undergroundRenderer.render(this.sceneManager.camera);
+      } else {
+        this.sceneManager.render();
+      }
       
       requestAnimationFrame(gameLoop);
     };
@@ -146,6 +239,8 @@ class AntenbOro {
 
     // Update existing ant meshes
     for (const ant of allAnts) {
+      // Skip player colony queen — she lives underground
+      if (ant.type === 'QUEEN' && ant.colonyId === 0) continue;
       const meshKey = `${ant.colonyId}_${ant.id}`;
       if (!ant.isDead) {
         // Queen moves slowly inside nest; detect if actually moving
@@ -201,13 +296,19 @@ class AntenbOro {
   /**
    * Sync brood meshes (eggs, larvae, pupae) with both colonies.
    * Each brood item gets a unique key, position, and lifecycle stage.
+   * Player colony brood lives underground; enemy colony brood is on surface.
    */
   _updateEggMeshes() {
-    const brood = [];
+    const surfaceBrood = [];
+    const ugBrood = [];
+
     for (const colony of [this.simulation.playerColony, this.simulation.enemyColony]) {
+      const isPlayer = colony.id === 0;
+      const list = isPlayer ? ugBrood : surfaceBrood;
+
       // Eggs
       for (const egg of colony.eggQueue) {
-        brood.push({
+        list.push({
           key: `egg_${colony.id}_${egg.id}`,
           x: egg.x, y: egg.y,
           age: egg.age,
@@ -216,7 +317,7 @@ class AntenbOro {
       }
       // Larvae
       for (const larva of colony.larvaQueue) {
-        brood.push({
+        list.push({
           key: `larva_${colony.id}_${larva.id}`,
           x: larva.x, y: larva.y,
           age: larva.age,
@@ -225,7 +326,7 @@ class AntenbOro {
       }
       // Pupae
       for (const pupa of colony.pupaQueue) {
-        brood.push({
+        list.push({
           key: `pupa_${colony.id}_${pupa.id}`,
           x: pupa.x, y: pupa.y,
           age: pupa.age,
@@ -233,7 +334,119 @@ class AntenbOro {
         });
       }
     }
-    this.sceneManager.updateBrood(brood);
+
+    // Surface brood (enemy colony) — render in surface scene
+    this.sceneManager.updateBrood(surfaceBrood);
+
+    // Underground brood (player colony) — position in queen chamber
+    this._updateUndergroundBrood(ugBrood);
+  }
+
+  /**
+   * Render player colony brood (eggs/larvae/pupae) inside the
+   * underground queen chamber scene.
+   */
+  _updateUndergroundBrood(broodItems) {
+    const ugScene = this.undergroundRenderer.scene;
+    const chamber = this.simulation.playerColony.underground.getQueenChamber();
+    if (!chamber) return;
+
+    if (!this._ugBroodMeshes) this._ugBroodMeshes = new Map();
+
+    const activeKeys = new Set();
+    for (const item of broodItems) {
+      activeKeys.add(item.key);
+
+      // Create mesh if needed
+      if (!this._ugBroodMeshes.has(item.key)) {
+        const mesh = this._createUgBroodMesh(item.stage);
+        // Scatter around queen chamber floor
+        const angle = Math.random() * Math.PI * 2;
+        const dist = Math.random() * chamber.radius * 0.5;
+        const bx = chamber.x + Math.cos(angle) * dist;
+        const bz = chamber.z + Math.sin(angle) * dist;
+        const by = chamber.y - chamber.radius * 0.4 + 0.03;
+        mesh.position.set(bx, by, bz);
+        mesh.rotation.y = Math.random() * Math.PI * 2;
+        mesh.userData.baseY = by;
+        ugScene.add(mesh);
+        this._ugBroodMeshes.set(item.key, mesh);
+      }
+
+      // Animate
+      const mesh = this._ugBroodMeshes.get(item.key);
+      if (!mesh) continue;
+
+      if (item.stage === 'egg') {
+        const grow = Math.min(1.0, item.age / 30);
+        const s = 0.5 + grow * 0.5;
+        mesh.scale.set(s, s, s);
+        const wobble = Math.sin(performance.now() * 0.002 + item.age * 0.1) * 0.005;
+        mesh.position.y = mesh.userData.baseY + wobble;
+      } else if (item.stage === 'larva') {
+        const squirm = Math.sin(performance.now() * 0.004 + item.age * 0.05) * 0.08;
+        mesh.rotation.z = squirm;
+        const breathe = 1.0 + Math.sin(performance.now() * 0.003) * 0.05;
+        mesh.scale.set(1, breathe, 1);
+      } else if (item.stage === 'pupa') {
+        const pulse = 1.0 + Math.sin(performance.now() * 0.001) * 0.02;
+        mesh.scale.set(pulse, pulse, pulse);
+      }
+    }
+
+    // Remove gone brood
+    for (const [key, mesh] of this._ugBroodMeshes) {
+      if (!activeKeys.has(key)) {
+        ugScene.remove(mesh);
+        if (mesh.geometry) mesh.geometry.dispose();
+        this._ugBroodMeshes.delete(key);
+      }
+    }
+  }
+
+  /**
+   * Create a small brood mesh for the underground scene.
+   */
+  _createUgBroodMesh(stage) {
+    if (stage === 'egg') {
+      const geo = new THREE.SphereGeometry(0.04, 8, 6);
+      geo.scale(1.0, 0.75, 1.4);
+      const mat = new THREE.MeshStandardMaterial({
+        color: 0xf5f0e8, emissive: 0x443322, emissiveIntensity: 0.3,
+        roughness: 0.25,
+      });
+      const mesh = new THREE.Mesh(geo, mat);
+      mesh.scale.set(0.5, 0.5, 0.5);
+      return mesh;
+    } else if (stage === 'larva') {
+      const group = new THREE.Group();
+      const segGeo = new THREE.SphereGeometry(0.04, 6, 5);
+      const segMat = new THREE.MeshStandardMaterial({
+        color: 0xfaf0dc, emissive: 0x332200, emissiveIntensity: 0.15,
+        roughness: 0.4, transparent: true, opacity: 0.85,
+      });
+      for (let i = 0; i < 3; i++) {
+        const seg = new THREE.Mesh(segGeo, segMat);
+        const t = (i - 1) * 0.06;
+        seg.position.set(0, Math.abs(t) * 0.3, t);
+        seg.scale.set(0.8 + (1 - Math.abs(i - 1)) * 0.3, 0.7, 1.0);
+        group.add(seg);
+      }
+      const headGeo = new THREE.SphereGeometry(0.015, 4, 4);
+      const headMat = new THREE.MeshStandardMaterial({ color: 0x443322, roughness: 0.6 });
+      const head = new THREE.Mesh(headGeo, headMat);
+      head.position.set(0, 0.01, 0.09);
+      group.add(head);
+      return group;
+    } else { // pupa
+      const geo = new THREE.CapsuleGeometry(0.035, 0.07, 4, 8);
+      geo.rotateX(Math.PI / 2);
+      const mat = new THREE.MeshStandardMaterial({
+        color: 0xc8a050, emissive: 0x331800, emissiveIntensity: 0.2,
+        roughness: 0.35, metalness: 0.05,
+      });
+      return new THREE.Mesh(geo, mat);
+    }
   }
 }
 
@@ -273,7 +486,7 @@ class UIManager {
   }
 
   update() {
-    const isOverhead = !this.playerController.isFPSMode;
+    const isOverhead = !this.playerController.isFPSMode && !this.playerController.isUnderground;
     
     // Toggle strategy canvas visibility
     if (this.strategyCanvas) {
@@ -298,7 +511,7 @@ class UIManager {
         <p>Queen HP: ${enemyStats.queenHealth}/${enemyStats.queenMaxHealth}</p>
       </div>
       <div class="hud-section">
-        <p>Mode: ${this.playerController.isFPSMode ? 'FPS (Press TAB for Overhead)' : 'OVERHEAD (Press TAB for FPS)'}</p>
+        <p>Mode: ${this.playerController.isUnderground ? '🕳️ UNDERGROUND (Press E at entrance to exit)' : this.playerController.isFPSMode ? 'FPS (Press TAB for Overhead, E at nest to enter)' : 'OVERHEAD (Press TAB for FPS)'}</p>
         <p>Speed: ${this.simulation.getSpeedMultiplier()}x</p>
         <p>Tick: ${this.simulation.tick}</p>
       </div>
