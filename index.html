@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AntenbOro - 3D Ant Colony Strategy FPS</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    
+    html, body {
+      width: 100%;
+      height: 100%;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #000;
+      color: #fff;
+      overflow: hidden;
+    }
+    
+    #canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+    }
+    
+    #hud {
+      position: absolute;
+      top: 20px;
+      left: 20px;
+      background: rgba(0, 0, 0, 0.7);
+      padding: 15px;
+      border: 2px solid #00ff00;
+      border-radius: 5px;
+      font-family: 'Courier New', monospace;
+      font-size: 12px;
+      line-height: 1.6;
+      max-width: 300px;
+      z-index: 100;
+    }
+    
+    .hud-section {
+      margin-bottom: 15px;
+      border-bottom: 1px solid #00ff00;
+      padding-bottom: 10px;
+    }
+    
+    .hud-section:last-child {
+      border-bottom: none;
+      margin-bottom: 0;
+    }
+    
+    .hud-section h3 {
+      color: #00ff00;
+      font-size: 14px;
+      margin-bottom: 5px;
+    }
+    
+    .hud-section p {
+      margin: 3px 0;
+      color: #aaa;
+    }
+    
+    .game-over {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      background: rgba(0, 0, 0, 0.95);
+      padding: 40px;
+      border: 3px solid #ff0000;
+      border-radius: 10px;
+      text-align: center;
+      z-index: 1000;
+    }
+    
+    .game-over h1 {
+      font-size: 48px;
+      color: #ff0000;
+      text-shadow: 0 0 10px #ff0000;
+    }
+    
+    #minimap {
+      position: absolute;
+      bottom: 20px;
+      right: 20px;
+      border: 2px solid #00ff00;
+      background: #1a1a1a;
+      width: 200px;
+      height: 150px;
+      z-index: 90;
+    }
+    
+    .help-text {
+      position: absolute;
+      bottom: 20px;
+      left: 20px;
+      background: rgba(0, 0, 0, 0.7);
+      padding: 10px;
+      border: 2px solid #00ff00;
+      border-radius: 5px;
+      font-family: 'Courier New', monospace;
+      font-size: 11px;
+      max-width: 250px;
+      z-index: 85;
+    }
+    
+    .help-text p {
+      margin: 3px 0;
+    }
+  </style>
+</head>
+<body>
+  <canvas id="canvas"></canvas>
+  <div id="hud"></div>
+  <canvas id="minimap" width="200" height="150"></canvas>
+  
+  <div class="help-text">
+    <p><strong>Controls:</strong></p>
+    <p><kbd>WASD</kbd> - Move</p>
+    <p><kbd>F</kbd> - Pick up food</p>
+    <p><kbd>E</kbd> - Deposit food</p>
+    <p><kbd>Click</kbd> - Bite enemy</p>
+    <p><kbd>Q</kbd> - Rally pheromone</p>
+    <p><kbd>B</kbd> - Build menu</p>
+    <p><kbd>TAB</kbd> - Toggle FPS/Overhead</p>
+    <p><kbd>P</kbd> - Pause</p>
+  </div>
+
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://cdn.jsdelivr.net/npm/three@r169/build/three.module.js",
+      "three/addons/": "https://cdn.jsdelivr.net/npm/three@r169/examples/jsm/"
+    }
+  }
+  </script>
+  
+  <script type="module" src="src/main.js"></script>
+</body>
+</html>
