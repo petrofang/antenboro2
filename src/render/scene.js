@@ -66,16 +66,16 @@ export class SceneManager {
     
     // Directional light (sun) - positioned clearly above
     const sun = new THREE.DirectionalLight(0xffffff, 1.0);
-    sun.position.set(50, 50, 50);
+    sun.position.set(100, 120, 80);
     sun.target.position.set(0, 0, 0);
     sun.castShadow = true;
     sun.shadow.mapSize.set(CONFIG.SHADOW_MAP_SIZE, CONFIG.SHADOW_MAP_SIZE);
-    sun.shadow.camera.left = -CONFIG.WORLD_SIZE_3D * 1.5;
-    sun.shadow.camera.right = CONFIG.WORLD_SIZE_3D * 1.5;
-    sun.shadow.camera.top = CONFIG.WORLD_SIZE_3D * 1.5;
-    sun.shadow.camera.bottom = -CONFIG.WORLD_SIZE_3D * 1.5;
+    sun.shadow.camera.left = -CONFIG.WORLD_SIZE_3D * 0.6;
+    sun.shadow.camera.right = CONFIG.WORLD_SIZE_3D * 0.6;
+    sun.shadow.camera.top = CONFIG.WORLD_SIZE_3D * 0.6;
+    sun.shadow.camera.bottom = -CONFIG.WORLD_SIZE_3D * 0.6;
     sun.shadow.camera.near = 0.5;
-    sun.shadow.camera.far = 300;
+    sun.shadow.camera.far = 600;
     this.scene.add(sun);
     this.scene.add(sun.target);
     
@@ -105,17 +105,8 @@ export class SceneManager {
     const segments = 64;
     const geometry = new THREE.PlaneGeometry(size, size, segments, segments);
     
-    // Vertex displacement for terrain height
-    const positionAttribute = geometry.getAttribute('position');
-    const positions = positionAttribute.array;
-    for (let i = 0; i < positions.length; i += 3) {
-      const x = positions[i];
-      const z = positions[i + 1];
-      // Subtle noise for terrain
-      const height = Math.sin(x * 0.3) * 0.3 + Math.cos(z * 0.3) * 0.3 + Math.random() * 0.1;
-      positions[i + 2] = height;
-    }
-    positionAttribute.needsUpdate = true;
+    // No height displacement — flat terrain avoids raycasting issues
+    // and keeps ants, nests, and food firmly on the ground
     geometry.computeVertexNormals();
     
     // Material with PBR
@@ -135,29 +126,15 @@ export class SceneManager {
     this.scene.add(terrain);
     this.terrain = terrain;
     
-    // Raycaster for terrain height sampling
-    this._terrainRaycaster = new THREE.Raycaster();
-    this._terrainRayOrigin = new THREE.Vector3();
-    this._terrainRayDir = new THREE.Vector3(0, -1, 0);
-    
-    console.log('✓ Terrain created: size=' + size + 'x' + size + ', segments=' + segments);
+    console.log('✓ Terrain created: size=' + size + 'x' + size);
     return terrain;
   }
 
   /**
    * Sample terrain height at a world XZ position.
-   * Returns the Y value of the terrain surface, or 0 if no hit.
+   * Flat terrain — always returns 0.
    */
   getTerrainHeight(worldX, worldZ) {
-    if (!this.terrain) return 0;
-    
-    this._terrainRayOrigin.set(worldX, 50, worldZ);
-    this._terrainRaycaster.set(this._terrainRayOrigin, this._terrainRayDir);
-    
-    const hits = this._terrainRaycaster.intersectObject(this.terrain);
-    if (hits.length > 0) {
-      return hits[0].point.y;
-    }
     return 0;
   }
   
@@ -273,8 +250,8 @@ export class SceneManager {
   _createNestMesh(color, emissive) {
     const group = new THREE.Group();
     
-    // Main mound
-    const moundGeo = new THREE.SphereGeometry(1.5, 16, 12, 0, Math.PI * 2, 0, Math.PI / 2);
+    // Main mound — visible landmark, proportional to ant scale
+    const moundGeo = new THREE.SphereGeometry(3, 16, 12, 0, Math.PI * 2, 0, Math.PI / 2);
     const moundMat = new THREE.MeshStandardMaterial({
       color: color,
       roughness: 0.9,
@@ -288,20 +265,20 @@ export class SceneManager {
     group.add(mound);
     
     // Entrance hole (dark disc)
-    const holeGeo = new THREE.CircleGeometry(0.4, 12);
+    const holeGeo = new THREE.CircleGeometry(0.5, 12);
     const holeMat = new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 1.0 });
     const hole = new THREE.Mesh(holeGeo, holeMat);
     hole.rotation.x = -Math.PI / 2;
-    hole.position.set(0.5, 0.05, 0.5);
+    hole.position.set(0.8, 0.05, 0.8);
     group.add(hole);
     
     // Small surrounding dirt piles
-    const dirtGeo = new THREE.SphereGeometry(0.5, 8, 6, 0, Math.PI * 2, 0, Math.PI / 2);
+    const dirtGeo = new THREE.SphereGeometry(0.6, 8, 6, 0, Math.PI * 2, 0, Math.PI / 2);
     for (let i = 0; i < 4; i++) {
       const dirt = new THREE.Mesh(dirtGeo, moundMat);
       const a = (i / 4) * Math.PI * 2 + Math.random() * 0.5;
-      dirt.position.set(Math.cos(a) * 2, 0, Math.sin(a) * 2);
-      dirt.scale.setScalar(0.5 + Math.random() * 0.5);
+      dirt.position.set(Math.cos(a) * 4, 0, Math.sin(a) * 4);
+      dirt.scale.setScalar(0.4 + Math.random() * 0.5);
       dirt.castShadow = true;
       group.add(dirt);
     }
@@ -310,116 +287,144 @@ export class SceneManager {
   }
 
   /**
-   * Create an ant mesh at a given position.
-   * Returns an Object3D with body (segmented ellipsoids), legs, mandibles.
+   * Create an ant mesh with caste-specific visuals:
+   *   WORKER  — small, sleek, short mandibles
+   *   SOLDIER — medium, large pronounced mandibles (true to real major workers)
+   *   QUEEN   — large engorged gaster (abdomen), small head, pulsates
    */
   createAntMesh(id, type, colonyId) {
     const group = new THREE.Group();
     
-    // Determine color and size
     const isEnemy = colonyId === 1;
     const isSoldier = type === 'SOLDIER';
     const isQueen = type === 'QUEEN';
-    const scale = isQueen ? 1.2 : (isSoldier ? 1.0 : 0.7);
     
-    // Body segments (3 ellipsoids: head, thorax, gaster)
-    const headGeometry = new THREE.SphereGeometry(0.15 * scale, 8, 8);
-    const thoraxGeometry = new THREE.SphereGeometry(0.2 * scale, 8, 8);
-    const gasterGeometry = new THREE.SphereGeometry(0.25 * scale, 8, 8);
+    // --- Caste-specific proportions ---
+    let headR, thoraxR, gasterR, spacing, scale;
+    if (isQueen) {
+      // Queen: tiny head, normal thorax, huge swollen gaster
+      headR = 0.08; thoraxR = 0.12; gasterR = 0.35; spacing = 0.25; scale = 1.5;
+    } else if (isSoldier) {
+      // Soldier: oversized head (for big mandibles), stocky
+      headR = 0.18; thoraxR = 0.16; gasterR = 0.2; spacing = 0.22; scale = 1.0;
+    } else {
+      // Worker: small, balanced proportions
+      headR = 0.1; thoraxR = 0.12; gasterR = 0.15; spacing = 0.18; scale = 0.7;
+    }
     
-    // Realistic ant colors: player = dark brown/black, enemy = reddish-brown
+    // --- Colony color ---
     let bodyMaterial;
     if (isEnemy) {
       bodyMaterial = new THREE.MeshStandardMaterial({
-        color: 0x8b2500,
-        roughness: 0.6,
-        metalness: 0.05,
-        emissive: 0x3a0800,
-        emissiveIntensity: 0.15,
+        color: 0x8b2500, roughness: 0.6, metalness: 0.05,
+        emissive: 0x3a0800, emissiveIntensity: 0.15,
       });
     } else {
       bodyMaterial = new THREE.MeshStandardMaterial({
-        color: 0x1a1a1e,
-        roughness: 0.55,
-        metalness: 0.05,
-        emissive: 0x050508,
-        emissiveIntensity: 0.1,
+        color: 0x1a1a1e, roughness: 0.55, metalness: 0.05,
+        emissive: 0x050508, emissiveIntensity: 0.1,
       });
     }
+    
+    // --- Body segments ---
+    const headGeometry = new THREE.SphereGeometry(headR * scale, 8, 8);
+    const thoraxGeometry = new THREE.SphereGeometry(thoraxR * scale, 8, 8);
+    const gasterGeometry = new THREE.SphereGeometry(gasterR * scale, 8, 8);
     
     const head = new THREE.Mesh(headGeometry, bodyMaterial);
     const thorax = new THREE.Mesh(thoraxGeometry, bodyMaterial);
     const gaster = new THREE.Mesh(gasterGeometry, bodyMaterial);
     
-    head.position.z = 0.3 * scale;
+    head.position.z = spacing * scale * 1.5;
     thorax.position.z = 0;
-    gaster.position.z = -0.3 * scale;
+    gaster.position.z = -spacing * scale * 1.5;
+    
+    // Queen gaster is elongated (squish Y, stretch Z for physogastric look)
+    if (isQueen) {
+      gaster.scale.set(1, 0.8, 1.4);
+    }
     
     head.castShadow = true;
     thorax.castShadow = true;
     gaster.castShadow = true;
-    
     group.add(head);
     group.add(thorax);
     group.add(gaster);
     
-    // Mandibles (small cones on head)
-    if (isSoldier || type === 'QUEEN') {
-      const mandibleGeometry = new THREE.ConeGeometry(0.08 * scale, 0.25 * scale, 4);
-      const mandibleMaterial = new THREE.MeshStandardMaterial({
-        color: 0x333333,
-        roughness: 0.3,
-        metalness: 0.2,
+    // --- Mandibles ---
+    // Soldiers get massive mandibles; workers get tiny ones; queen has none
+    if (isSoldier) {
+      const mGeo = new THREE.ConeGeometry(0.06 * scale, 0.35 * scale, 4);
+      const mMat = new THREE.MeshStandardMaterial({
+        color: 0x4a2800, roughness: 0.3, metalness: 0.3,
       });
-      const mandible1 = new THREE.Mesh(mandibleGeometry, mandibleMaterial);
-      const mandible2 = new THREE.Mesh(mandibleGeometry, mandibleMaterial);
-      mandible1.position.set(-0.1 * scale, 0, 0.35 * scale);
-      mandible1.rotation.z = 0.3;
-      mandible2.position.set(0.1 * scale, 0, 0.35 * scale);
-      mandible2.rotation.z = -0.3;
-      mandible1.castShadow = true;
-      mandible2.castShadow = true;
-      group.add(mandible1);
-      group.add(mandible2);
+      const m1 = new THREE.Mesh(mGeo, mMat);
+      const m2 = new THREE.Mesh(mGeo, mMat);
+      const headZ = head.position.z;
+      m1.position.set(-0.1 * scale, -0.02 * scale, headZ + headR * scale * 0.8);
+      m1.rotation.x = Math.PI / 2;
+      m1.rotation.z = 0.4;
+      m2.position.set(0.1 * scale, -0.02 * scale, headZ + headR * scale * 0.8);
+      m2.rotation.x = Math.PI / 2;
+      m2.rotation.z = -0.4;
+      m1.castShadow = true;
+      m2.castShadow = true;
+      group.add(m1);
+      group.add(m2);
+    } else if (!isQueen) {
+      // Workers: small mandibles
+      const mGeo = new THREE.ConeGeometry(0.02 * scale, 0.1 * scale, 4);
+      const mMat = new THREE.MeshStandardMaterial({ color: 0x333333, roughness: 0.4 });
+      const m1 = new THREE.Mesh(mGeo, mMat);
+      const m2 = new THREE.Mesh(mGeo, mMat);
+      const headZ = head.position.z;
+      m1.position.set(-0.05 * scale, 0, headZ + headR * scale * 0.7);
+      m1.rotation.x = Math.PI / 2;
+      m1.rotation.z = 0.3;
+      m2.position.set(0.05 * scale, 0, headZ + headR * scale * 0.7);
+      m2.rotation.x = Math.PI / 2;
+      m2.rotation.z = -0.3;
+      group.add(m1);
+      group.add(m2);
     }
     
-    // Antennae (thin cylinders)
-    const antennaGeometry = new THREE.CylinderGeometry(0.02 * scale, 0.01 * scale, 0.4 * scale, 4);
-    const antennaMaterial = new THREE.MeshStandardMaterial({
-      color: 0x222222,
-      roughness: 0.5,
-    });
-    const antenna1 = new THREE.Mesh(antennaGeometry, antennaMaterial);
-    const antenna2 = new THREE.Mesh(antennaGeometry, antennaMaterial);
-    antenna1.position.set(-0.12 * scale, 0, 0.35 * scale);
-    antenna1.rotation.x = -0.3;
-    antenna2.position.set(0.12 * scale, 0, 0.35 * scale);
-    antenna2.rotation.x = -0.3;
-    group.add(antenna1);
-    group.add(antenna2);
+    // --- Antennae ---
+    const antennaGeo = new THREE.CylinderGeometry(0.01 * scale, 0.005 * scale, 0.3 * scale, 4);
+    const antennaMat = new THREE.MeshStandardMaterial({ color: 0x222222, roughness: 0.5 });
+    const a1 = new THREE.Mesh(antennaGeo, antennaMat);
+    const a2 = new THREE.Mesh(antennaGeo, antennaMat);
+    const antZ = head.position.z + headR * scale * 0.5;
+    a1.position.set(-0.06 * scale, 0.04 * scale, antZ);
+    a1.rotation.x = -0.4;
+    a1.rotation.z = -0.2;
+    a2.position.set(0.06 * scale, 0.04 * scale, antZ);
+    a2.rotation.x = -0.4;
+    a2.rotation.z = 0.2;
+    group.add(a1);
+    group.add(a2);
     
-    // Simple legs (6 cylinders, 3 per side)
-    const legGeometry = new THREE.CylinderGeometry(0.02 * scale, 0.015 * scale, 0.3 * scale, 4);
-    const legMaterial = new THREE.MeshStandardMaterial({
-      color: 0x1a1a1a,
-      roughness: 0.6,
-    });
-    
+    // --- Legs (6) ---
+    const legGeo = new THREE.CylinderGeometry(0.012 * scale, 0.008 * scale, 0.2 * scale, 4);
+    const legMat = new THREE.MeshStandardMaterial({ color: 0x1a1a1a, roughness: 0.6 });
     const legs = [];
     for (let i = 0; i < 6; i++) {
-      const leg = new THREE.Mesh(legGeometry, legMaterial);
+      const leg = new THREE.Mesh(legGeo, legMat);
       const side = i < 3 ? -1 : 1;
-      const offset = i % 3;
+      const pair = i % 3;
       leg.position.set(
-        side * 0.15 * scale,
-        -0.15 * scale,
-        (offset - 1) * 0.2 * scale
+        side * thoraxR * scale * 0.9,
+        -thoraxR * scale * 0.7,
+        (pair - 1) * spacing * scale * 0.8
       );
-      leg.rotation.z = side * 0.3;
-      leg.castShadow = true;
+      leg.rotation.z = side * 0.4;
       group.add(leg);
       legs.push(leg);
     }
+    
+    // Store metadata for animation
+    group.userData.antType = type;
+    group.userData.isQueen = isQueen;
+    group.userData.birthTick = performance.now();
     
     this.scene.add(group);
     this.antMeshes.set(id, group);
@@ -429,21 +434,27 @@ export class SceneManager {
   }
 
   /**
-   * Update ant mesh position and rotation based on sim state.
+   * Update ant mesh position, rotation, and animation.
    */
   updateAntMesh(id, x, y, angle, height = 0) {
     const mesh = this.antMeshes.get(id);
     if (!mesh) return;
     
-    // Convert grid coordinates to 3D world
     const worldX = (x - CONFIG.WORLD_WIDTH / 2) * CONFIG.CELL_SIZE;
     const worldZ = (y - CONFIG.WORLD_HEIGHT / 2) * CONFIG.CELL_SIZE;
-    
-    // Sample terrain height so ants sit on the surface
     const terrainY = this.getTerrainHeight(worldX, worldZ);
-    mesh.position.set(worldX, terrainY + 0.3, worldZ);
-    // Ant model faces +Z; convert grid angle to correct Y rotation.
+    mesh.position.set(worldX, terrainY + 0.05, worldZ);
     mesh.rotation.y = Math.PI / 2 - angle;
+    
+    // Queen pulsating abdomen animation
+    if (mesh.userData.isQueen) {
+      const bodies = this.antBodies.get(id);
+      if (bodies && bodies.gaster) {
+        const t = performance.now() * 0.003;
+        const pulse = 1.0 + Math.sin(t) * 0.12;
+        bodies.gaster.scale.set(pulse, 0.8 * pulse, 1.4 * pulse);
+      }
+    }
   }
 
   /**

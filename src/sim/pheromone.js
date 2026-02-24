@@ -56,12 +56,31 @@ export class PheromoneGrid {
 
   /**
    * Decay all pheromones each tick.
+   * Uses a logarithmic-inspired decay: strong trails fade slowly (persistent highways),
+   * weak trails vanish quickly. This mimics real ant pheromone chemistry where
+   * volatile compounds evaporate faster at low concentrations.
+   * 
+   * Formula: new = old * rate - floor_drain
+   * The constant floor_drain (0.02) ensures near-zero values get cleaned up,
+   * while the high rate (0.999) keeps strong trails around for minutes.
    */
   update() {
+    const rate = CONFIG.PHEROMONE_DECAY_RATE;
+    const floorDrain = 0.02; // Small constant subtracted each tick to clean up weak trails
+    
     for (let c = 0; c < CONFIG.PHEROMONE_CHANNELS; c++) {
       for (let x = 0; x < CONFIG.WORLD_WIDTH; x++) {
         for (let y = 0; y < CONFIG.WORLD_HEIGHT; y++) {
-          this.grids[c][x][y] *= CONFIG.PHEROMONE_DECAY_RATE;
+          let val = this.grids[c][x][y];
+          if (val <= 0) continue;
+          
+          // Multiplicative decay + small constant drain
+          val = val * rate - floorDrain;
+          
+          // Clean up negligible values
+          if (val < 0.5) val = 0;
+          
+          this.grids[c][x][y] = val;
         }
       }
     }

@@ -8,17 +8,17 @@ const CONFIG = {
   SPEED_LEVELS: [1, 2, 4, 8],  // Speed multipliers for overhead view; FPS view always locked to 1×
   
   // === WORLD GRID ===
-  WORLD_WIDTH: 100,            // Grid width in cells
-  WORLD_HEIGHT: 75,            // Grid height in cells
-  WORLD_SIZE_3D: 60,           // 3D world size in units (each cell ≈ 0.6–0.8 units)
-  CELL_SIZE: 0.6,              // 3D units per grid cell (100 cells × 0.6 = 60 units)
+  WORLD_WIDTH: 400,            // Grid width in cells (big world)
+  WORLD_HEIGHT: 300,           // Grid height in cells
+  WORLD_SIZE_3D: 240,          // 3D world size in units (400 cells × 0.6)
+  CELL_SIZE: 0.6,              // 3D units per grid cell
   
   // === NEST & COLONIES ===
-  PLAYER_COLONY_NEST_X: 15,    // Player (black) colony nest grid X
-  PLAYER_COLONY_NEST_Y: 37,    // Player (black) colony nest grid Y
-  ENEMY_COLONY_NEST_X: 85,     // Enemy (red) colony nest grid X
-  ENEMY_COLONY_NEST_Y: 37,     // Enemy (red) colony nest grid Y
-  NEST_RADIUS: 5,              // Nest entrance radius in cells
+  PLAYER_COLONY_NEST_X: 50,    // Player (black) colony nest grid X
+  PLAYER_COLONY_NEST_Y: 150,   // Player (black) colony nest grid Y
+  ENEMY_COLONY_NEST_X: 350,    // Enemy (red) colony nest grid X
+  ENEMY_COLONY_NEST_Y: 150,    // Enemy (red) colony nest grid Y
+  NEST_RADIUS: 8,              // Nest entrance radius in cells
   
   // === ANT COUNTS ===
   INITIAL_WORKERS: 20,
@@ -26,18 +26,18 @@ const CONFIG = {
   MAX_ANTS_PER_COLONY: 150,
   
   // === FOOD & RESOURCES ===
-  FOOD_CLUSTERS: 12,            // Number of food patches on map
-  FOOD_PER_CLUSTER: 80,         // Food units per patch
+  FOOD_CLUSTERS: 40,            // Number of food patches on map (scaled for bigger world)
+  FOOD_PER_CLUSTER: 120,        // Food units per patch
   FOOD_CARRY_CAPACITY: 1,      // How much one ant can carry
   FOOD_DEPOT_CAPACITY: 1000,   // Max food colony can store
   FOOD_RESPAWN_CHANCE: 0.0005, // Chance per tick of a depleted patch respawning
   
   // === ANT BEHAVIOR: MOVEMENT ===
-  ANT_SPEED: 0.3,              // Grid cells per tick (at 1× speed)
-  ANT_ROTATION_SPEED: 0.15,    // Radians per tick for turning
-  ANT_WANDER_ANGLE_CHANGE: 0.3, // Radians per tick while wandering
-  ANT_TURN_MAX: 0.45,          // Max pheromone steer adjustment per tick (radians)
-  ANT_WANDER_PROBABILITY: 0.55, // Probability of ignoring pheromone trail (natural variation)
+  ANT_SPEED: 0.15,             // Grid cells per tick — slow for big world (ant-scale feeling)
+  ANT_ROTATION_SPEED: 0.12,    // Radians per tick for turning
+  ANT_WANDER_ANGLE_CHANGE: 0.25, // Radians per tick while wandering
+  ANT_TURN_MAX: 0.4,           // Max pheromone steer adjustment per tick (radians)
+  ANT_WANDER_PROBABILITY: 0.5,  // Probability of ignoring pheromone trail (natural variation)
   
   // === ANT BEHAVIOR: COMBAT ===
   SOLDIER_DAMAGE: 2,
@@ -65,7 +65,10 @@ const CONFIG = {
   ANT_LIFESPAN_TICKS: 12000,   // Natural death age (~6.7 min at 30 ticks/sec)
   
   // === PHEROMONE PHYSICS ===
-  PHEROMONE_DECAY_RATE: 0.95,  // Multiplier per tick (5% decay)
+  // Realistic logarithmic-style decay: trails persist for minutes, not seconds.
+  // At 0.999 per tick (30 ticks/sec): half-life ≈ 693 ticks ≈ 23 seconds.
+  // A deposit of 80 stays detectable (>1) for ~7000 ticks ≈ 3.9 minutes.
+  PHEROMONE_DECAY_RATE: 0.999, // Multiplier per tick — very slow fade (logarithmic feel)
   PHEROMONE_DIFFUSION: false,  // Spatial diffusion (expensive, disabled by default)
   PHEROMONE_CHANNELS: 2,       // Player colony + enemy colony
   
@@ -97,8 +100,8 @@ const CONFIG = {
   BLOOM_RADIUS: 0.4,
   
   // === VISION & FOG ===
-  FOG_NEAR: 0.1,
-  FOG_FAR: 200,
+  FOG_NEAR: 1,
+  FOG_FAR: 500,
   FOG_COLOR: 0x87ceeb,         // Sky blue
   FOG_GROUND_COLOR: 0x4a7c59,  // Green
 };

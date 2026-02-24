@@ -354,7 +354,7 @@ class UIManager {
     const panCenterY = (pc.overheadZ / CONFIG.CELL_SIZE) + CONFIG.WORLD_HEIGHT / 2;
     
     // Calculate visible grid area — show ~40 cells wide, proportional height
-    const viewCells = 50; // grid cells visible across screen width
+    const viewCells = 120; // grid cells visible across screen width
     const cellPx = cw / viewCells;
     const viewCellsY = ch / cellPx;
     

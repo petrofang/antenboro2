@@ -338,7 +338,7 @@ export class PlayerController {
    * This is the "Ant Simulator" view — a proper top-down 2D strategy view.
    */
   _updateOverheadMovement() {
-    const panSpeed = 0.8; // grid cells per frame at 3D scale
+    const panSpeed = 2.0; // faster pan for bigger world
     if (this.keys['w']) this.overheadZ -= panSpeed;
     if (this.keys['s']) this.overheadZ += panSpeed;
     if (this.keys['a']) this.overheadX -= panSpeed;
